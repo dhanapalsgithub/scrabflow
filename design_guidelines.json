@@ -1,0 +1,207 @@
+{
+  "project_name": "ReLoop Waste Management Platform",
+  "app_type": "dashboard",
+  "archetype": "ORGANIC_PERFORMANCE_TACTICAL",
+  "theme_strategy": {
+    "sidebar": {
+      "background": "bg-slate-950 (#020617)",
+      "logo_accent": "emerald-500 (#10b981)",
+      "active_item": "bg-white text-slate-950 rounded-xl shadow-md font-semibold transition-all duration-200",
+      "inactive_item": "text-slate-400 hover:text-white hover:bg-slate-900/60 rounded-xl transition-all duration-200",
+      "border": "border-slate-800/80"
+    },
+    "main_content": {
+      "background": "bg-[#f4f6f9]",
+      "text_primary": "text-slate-900",
+      "text_muted": "text-slate-500"
+    },
+    "cards_and_tables": {
+      "container": "bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200",
+      "header": "border-b border-slate-100 p-6",
+      "body": "p-6",
+      "table_header": "bg-slate-50/80 text-slate-700 font-semibold text-xs uppercase tracking-wider border-b border-slate-200",
+      "table_row": "border-b border-slate-100 hover:bg-slate-50/50 transition-colors"
+    }
+  },
+  "typography": {
+    "font_family_body": "Inter, system-ui, sans-serif",
+    "font_family_headings": "Inter, sans-serif",
+    "font_family_metrics": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    "scale": {
+      "h1": "text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight",
+      "h2": "text-2xl font-bold text-slate-900 tracking-tight",
+      "h3": "text-xl font-semibold text-slate-800",
+      "card_title": "text-lg font-bold text-slate-900",
+      "metric_value": "font-mono font-black text-2xl lg:text-3xl text-slate-900 tracking-tight",
+      "transaction_id": "font-mono font-bold text-slate-700 text-sm tracking-wider uppercase bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/80",
+      "label": "text-xs font-semibold uppercase tracking-wider text-slate-500"
+    }
+  },
+  "colors": {
+    "primary": "#10b981",
+    "primary_hover": "#059669",
+    "primary_light": "#ecfdf5",
+    "slate_dark": "#020617",
+    "slate_sidebar": "#020617",
+    "bg_cool_grey": "#f4f6f9",
+    "card_white": "#ffffff",
+    "border_light": "#e2e8f0",
+    "status_badges": {
+      "Pending": "bg-amber-50 text-amber-700 border-amber-200/80 font-medium px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5",
+      "Accepted": "bg-blue-50 text-blue-700 border-blue-200/80 font-medium px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5",
+      "In Progress": "bg-purple-50 text-purple-700 border-purple-200/80 font-medium px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5",
+      "Completed": "bg-emerald-50 text-emerald-700 border-emerald-200/80 font-medium px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5",
+      "Cancelled": "bg-rose-50 text-rose-700 border-rose-200/80 font-medium px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5"
+    }
+  },
+  "role_architecture": {
+    "roles": [
+      {
+        "id": "public",
+        "name": "Public Household",
+        "description": "Recycle household scrap, track pickups, calculate instant earnings in INR.",
+        "accessible_menus": ["dashboard", "sell_scrap", "pickup_history", "profile"]
+      },
+      {
+        "id": "corporate",
+        "name": "Corporate Enterprise",
+        "description": "Bulk scrap dispatch, industrial waste logging, ESG compliance tracking.",
+        "accessible_menus": ["dashboard", "sell_scrap", "pickup_history", "compliance_esg", "profile"]
+      },
+      {
+        "id": "delivery_partner",
+        "name": "Logistics & Delivery Partner",
+        "description": "Route pickups, manage claim orders, update status & track payout metrics.",
+        "accessible_menus": ["pickups_table", "active_route", "disbursements", "vehicle_status"]
+      },
+      {
+        "id": "partner",
+        "name": "Hub & Area Partner",
+        "description": "Area management, local hub status, route dispatching & regional metrics.",
+        "accessible_menus": ["area_management", "zones_table", "hub_capacity", "fleet_dispatch"]
+      },
+      {
+        "id": "admin",
+        "name": "System Super Admin",
+        "description": "Global settings, user management, editable material rate card, revenue & CSV export.",
+        "accessible_menus": ["admin_overview", "users_list", "material_rates", "revenue_analytics", "routing_map", "csv_exports"]
+      }
+    ]
+  },
+  "key_features_and_components": {
+    "login_page": {
+      "layout": "Split-screen or centered card with dark slate branding",
+      "elements": [
+        "Role selection dropdown (Public, Corporate, Delivery Partner, Partner Hub, Admin)",
+        "Work Email / Username field with validation",
+        "Password field with show/hide toggle",
+        "Quick demo login presets buttons for instant testing",
+        "Emerald ReLoop eco branding logo"
+      ]
+    },
+    "sell_scrap_form": {
+      "elements": [
+        "Material selector cards (Mixed Paper, Plastics, E-Waste, Metals)",
+        "District & Full pickup address fields",
+        "Weight input toggle (Kg / Tons) with interactive slider & numeric input",
+        "Live Auto Earnings Calculator in INR (Weight * Material Rate)",
+        "Preferred Date & Time slot picker",
+        "Submit Request button with loading micro-animation"
+      ]
+    },
+    "delivery_partner_hub": {
+      "metrics": [
+        "Total Volume Collected (₹ / Kg)",
+        "Paid / Settled Earnings (₹)",
+        "Pending Disbursements (₹)"
+      ],
+      "pickup_table": [
+        "Transaction ID (Monospace bold)",
+        "Customer / Business Name & Type",
+        "Material & Weight",
+        "Pickup Address & District",
+        "Status Dropdown selector",
+        "Accept Order CTA button"
+      ]
+    },
+    "area_management_partner": {
+      "metric_cards": [
+        "Active Zones Count",
+        "Total Pickups Mapped",
+        "Total Volume Collected (Kg)",
+        "Hub Operating Status (Online / Near Capacity)"
+      ],
+      "zones_table": [
+        "Zone ID & Name",
+        "Coverage District",
+        "Assigned Drivers",
+        "Daily Volume",
+        "Hub Load % Progress Bar"
+      ]
+    },
+    "admin_control_panel": {
+      "sub_sections": [
+        "User Management (Filter by role, search, status switch)",
+        "Compliance & ESG Reports (Recycling impact metric, carbon offset)",
+        "Revenue Analytics & Platform Volume Metrics",
+        "Global Editable Material Price Rates Card (Paper, Plastic, E-Waste, Metal INR/kg rates)",
+        "CSV Export feature (export filtered pickup orders & user data)"
+      ]
+    }
+  },
+  "image_urls": {
+    "scrap_materials": [
+      {
+        "url": "https://images.unsplash.com/photo-1528323273322-d81458248d40?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA6OTV8MHwxfHNlYXJjaHwzfHxyZWN5Y2xpbmclMjB3YXN0ZSUyMG1hbmFnZW1lbnQlMjBzY3JhcCUyMG1hdGVyaWFscyUyMHBhcGVyJTIwcGxhc3RpYyUyMG1ldGFsJTIwZS13YXN0ZXxlbnwwfHx8fDE3OTE4ODgwODB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "cardboard_paper_recycling",
+        "alt": "Baled cardboard recycling material"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1507560461415-997cd00bfd45?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA6OTV8MHwxfHNlYXJjaHwyfHxyZWN5Y2xpbmclMjB3YXN0ZSUyMG1hbmFnZW1lbnQlMjBzY3JhcCUyMG1hdGVyaWFscyUyMHBhcGVyJTIwcGxhc3RpYyUyMG1ldGFsJTIwZS13YXN0ZXxlbnwwfHx8fDE3OTE4ODgwODB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "paper_scrap",
+        "alt": "Recyclable paper and cardboard stacks"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1624396113519-2f82e5a15a8c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA6OTV8MHwxfHNlYXJjaHw0fHxyZWN5Y2xpbmclMjB3YXN0ZSUyMG1hbmFnZW1lbnQlMjBzY3JhcCUyMG1hdGVyaWFscyUyMHBhcGVyJTIwcGxhc3RpYyUyMG1ldGFsJTIwZS13YXN0ZXxlbnwwfHx8fDE3OTE4ODgwODB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "plastics_scrap",
+        "alt": "Sorted plastic waste materials"
+      }
+    ],
+    "plant_and_hub": [
+      {
+        "url": "https://images.unsplash.com/photo-1773151929384-a3c6d5a79c72?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHwyfHxyZWN5Y2xpbmclMjBwbGFudCUyMGdyZWVuJTIwZW5lcmd5JTIwc3VzdGFpbmFibGUlMjBlbnZpcm9ubWVudCUyMHdvcmtlcnxlbnwwfHx8fDE3OTE4ODgwODZ8MA&ixlib=rb-4.1.0&q=85",
+        "category": "processing_plant",
+        "alt": "Sustainable waste recovery and recycling facility"
+      }
+    ]
+  },
+  "testing_attributes": {
+    "rule": "All interactive buttons, links, inputs, forms, menu items, table rows, and metric indicators MUST have data-testid attributes formatted in kebab-case.",
+    "examples": [
+      "data-testid='login-role-select'",
+      "data-testid='login-email-input'",
+      "data-testid='login-password-input'",
+      "data-testid='login-submit-button'",
+      "data-testid='sell-scrap-material-paper'",
+      "data-testid='sell-scrap-weight-input'",
+      "data-testid='sell-scrap-earnings-inr'",
+      "data-testid='sell-scrap-submit-btn'",
+      "data-testid='pickup-history-table'",
+      "data-testid='delivery-accept-order-btn'",
+      "data-testid='delivery-status-select'",
+      "data-testid='partner-zone-card-1'",
+      "data-testid='admin-export-csv-btn'",
+      "data-testid='admin-material-rate-input-paper'",
+      "data-testid='sidebar-menu-item-sell_scrap'"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Ensure the sidebar strictly uses dark slate `bg-slate-950` with an emerald logo mark `#10b981`.",
+    "Active sidebar navigation links MUST use the white pill style `bg-white text-slate-950 rounded-xl font-semibold shadow-sm`.",
+    "The main content area must use cool light grey `bg-[#f4f6f9]`.",
+    "Cards and data tables must use `bg-white border-slate-200 rounded-2xl shadow-sm`.",
+    "Format all transaction IDs and weight values using bold monospace typography (`font-mono font-bold`).",
+    "Ensure all 5 user roles (Public, Corporate, Delivery Partner, Partner Hub, Admin) can log in seamlessly via quick role presets or credential login, with menus updated live for each role.",
+    "Provide live interactive state management for Sell Scrap form (auto-calculating INR earnings), Pickup status updates, Delivery driver order acceptance, Admin material rate updates, and CSV export."
+  ]
+}
