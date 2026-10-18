@@ -33,6 +33,11 @@ def tokens():
     return {role: _login(role) for role in CREDS}
 
 
+def _otp(pid):
+    t, _ = _login("public")
+    return requests.get(f"{API}/scrap/pickups/{pid}", headers=H(t), timeout=15).json()["otp"]
+
+
 def H(t):
     return {"Authorization": f"Bearer {t}", "Content-Type": "application/json"}
 
@@ -64,8 +69,7 @@ class TestAuth:
 class TestPickups:
     def test_public_create_and_list(self, tokens):
         token, _ = tokens["public"]
-        payload = {"material": "Plastics", "weight": 10, "unit": "Kg",
-                   "district": "Chennai", "address": "TEST address 1", "phone": "9999999999",
+        payload = {"items": [{"material": "Plastics", "weight": 10, "unit": "Kg"}], "district": "Chennai", "address": "TEST address 1", "phone": "9999999999",
                    "preferred_date": "", "notes": "TEST"}
         r = requests.post(f"{API}/scrap/pickups/create", headers=H(token), json=payload, timeout=15)
         assert r.status_code == 200, r.text
@@ -84,8 +88,7 @@ class TestPickups:
 
     def test_tons_multiplication(self, tokens):
         token, _ = tokens["corporate"]
-        payload = {"material": "Metals", "weight": 0.5, "unit": "Tons",
-                   "district": "Coimbatore", "address": "TEST tons addr"}
+        payload = {"items": [{"material": "Metals", "weight": 0.5, "unit": "Tons"}], "district": "Coimbatore", "address": "TEST tons addr"}
         r = requests.post(f"{API}/scrap/pickups/create", headers=H(token), json=payload, timeout=15)
         assert r.status_code == 200
         p = r.json()
@@ -95,8 +98,7 @@ class TestPickups:
 
     def test_min_weight_rejected(self, tokens):
         token, _ = tokens["public"]
-        payload = {"material": "Plastics", "weight": 1, "unit": "Kg",
-                   "district": "Chennai", "address": "TEST too small"}
+        payload = {"items": [{"material": "Plastics", "weight": 1, "unit": "Kg"}], "district": "Chennai", "address": "TEST too small"}
         r = requests.post(f"{API}/scrap/pickups/create", headers=H(token), json=payload, timeout=15)
         assert r.status_code == 400
 
@@ -120,8 +122,7 @@ class TestPickups:
 
     def test_customer_can_cancel_pending(self, tokens):
         token, _ = tokens["public"]
-        payload = {"material": "Mixed Paper", "weight": 10, "unit": "Kg",
-                   "district": "Chennai", "address": "TEST cancellable"}
+        payload = {"items": [{"material": "Mixed Paper", "weight": 10, "unit": "Kg"}], "district": "Chennai", "address": "TEST cancellable"}
         r = requests.post(f"{API}/scrap/pickups/create", headers=H(token), json=payload, timeout=15)
         pid = r.json()["id"]
         pytest.cancel_pid = pid
@@ -133,15 +134,15 @@ class TestPickups:
         d_token, _ = tokens["delivery_partner"]
         pid = pytest.pickup_id
         # complete it
-        r = requests.put(f"{API}/scrap/pickups/{pid}/status", headers=H(d_token), json={"status": "Completed"}, timeout=15)
-        assert r.status_code == 200
+        r = requests.put(f"{API}/scrap/pickups/{pid}/status", headers=H(d_token), json={"status": "Completed", "otp": _otp(pid), "cash_collected": True}, timeout=15)
+        assert r.status_code == 200, r.text
         # Try again
         r = requests.put(f"{API}/scrap/pickups/{pid}/status", headers=H(d_token), json={"status": "Accepted"}, timeout=15)
         assert r.status_code == 400
 
     def test_delivery_cannot_create_pickup(self, tokens):
         token, _ = tokens["delivery_partner"]
-        payload = {"material": "Plastics", "weight": 10, "unit": "Kg", "district": "Chennai", "address": "TEST"}
+        payload = {"items": [{"material": "Plastics", "weight": 10, "unit": "Kg"}], "district": "Chennai", "address": "TEST"}
         r = requests.post(f"{API}/scrap/pickups/create", headers=H(token), json=payload, timeout=15)
         assert r.status_code == 403
 
@@ -208,10 +209,10 @@ class TestSettings:
 
         # Create pickup as public, verify new rate
         p_token, _ = tokens["public"]
-        payload = {"material": "Plastics", "weight": 10, "unit": "Kg", "district": "Chennai", "address": "TEST rate check"}
+        payload = {"items": [{"material": "Plastics", "weight": 10, "unit": "Kg"}], "district": "Chennai", "address": "TEST rate check"}
         r = requests.post(f"{API}/scrap/pickups/create", headers=H(p_token), json=payload, timeout=15)
         assert r.status_code == 200
-        assert r.json()["rate"] == 25
+        assert r.json()["items"][0]["rate"] == 25
         assert r.json()["amount"] == 250
         pytest.rate_check_pid = r.json()["id"]
 

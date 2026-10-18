@@ -11,6 +11,7 @@ import { payOnline } from "@/lib/razorpay";
 
 const PayCell = ({ p, onPaid }) => {
   if (p.payment_status === "paid") return <span className="text-xs font-semibold text-emerald-700" data-testid={`payment-status-${p.id}`}>Fee paid</span>;
+  if (p.payment_status === "waived") return <span className="text-xs text-slate-500">Fee waived</span>;
   if (p.payment_status !== "pending" || p.status === "Cancelled") return <span className="text-xs text-slate-400">No fee</span>;
   if (p.payment_method === "online") return (
     <button type="button" data-testid={`pay-now-${p.id}`} onClick={() => payOnline(p.id, onPaid)} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600">Pay {inr(p.service_fee)}</button>

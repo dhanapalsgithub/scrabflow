@@ -424,8 +424,8 @@ async def write_settings(body: SettingsUpdate, user: dict = Depends(require("adm
         rates = {}
         for m, v in patch["rates"].items():
             name = str(m).strip()
-            if len(name) < 2:
-                raise HTTPException(400, "Scrap type name must have at least 2 characters")
+            if len(name) < 2 or not re.fullmatch(r"[A-Za-z0-9 &/()\-]+", name):
+                raise HTTPException(400, "Scrap type names can use letters, numbers, spaces and & / ( ) - only")
             if float(v) < 0:
                 raise HTTPException(400, f"Rate for {name} must be positive")
             rates[name] = float(v)
@@ -567,6 +567,9 @@ async def update_status(pickup_id: str, body: StatusUpdate, user: dict = Depends
         if pickup.get("payment_method") == "cod" and pickup.get("payment_status") == "pending" and body.cash_collected:
             patch.update({"payment_status": "paid", "paid_at": ts})
             note += f" · ₹{pickup.get('service_fee', 0)} cash fee collected"
+        elif role == "admin" and pickup.get("payment_status") == "pending":
+            patch["payment_status"] = "waived"
+            note += " · service fee waived"
     await db.pickups.update_one({"id": pickup_id}, {"$set": patch, "$push": {"history": hist(body.status, user, note)}})
     return strip_otp(await db.pickups.find_one({"id": pickup_id}, NO_ID), user)
 
@@ -778,7 +781,7 @@ async def assign_pickup(pickup_id: str, body: AssignIn, user: dict = Depends(req
     note = f"Assigned by admin to {fields['assigned_name']}" + (f" · Vehicle {fields['assigned_vehicle']}" if fields["assigned_vehicle"] else "")
     await db.pickups.update_one({"id": pickup_id}, {"$set": {**fields, "status": status, "updated_at": now_iso()},
                                                     "$push": {"history": hist(status, user, note)}})
-    return await db.pickups.find_one({"id": pickup_id}, NO_ID)
+    return strip_otp(await db.pickups.find_one({"id": pickup_id}, NO_ID), user)
 
 
 @api.get("/admin/delivery-partners")
@@ -803,7 +806,7 @@ async def own_online_pickup(pickup_id: str, user: dict) -> dict:
     p = await db.pickups.find_one({"id": pickup_id, "customer_email": user["email"]}, NO_ID)
     if not p:
         raise HTTPException(404, "Pickup not found")
-    if p.get("payment_status") != "pending" or p["status"] == "Cancelled":
+    if p.get("payment_status") != "pending" or p["status"] in ("Cancelled", "Completed"):
         raise HTTPException(400, "No payment is due for this pickup")
     return p
 
@@ -956,10 +959,6 @@ async def seed():
         partner = await db.users.find_one({"email": p["assigned_to"]}, USER_PROJ)
         if partner:
             await db.pickups.update_one({"id": p["id"]}, {"$set": assignee_fields(partner)})
-    async for p in db.pickups.find({"items": {"$exists": False}}, NO_ID):
-        await db.pickups.update_one({"id": p["id"]}, {"$set": {
-            "items": [{"material": p["material"], "weight": p.get("weight", p["weight_kg"]), "unit": p.get("unit", "Kg"), "weight_kg": p["weight_kg"], "rate": p.get("rate", 0), "amount": p["amount"]}],
-            "otp": f"{secrets.randbelow(10000):04d}", "payment_method": "cod", "service_fee": 0, "payment_status": "not_required"}})
     if not await db.settings.find_one({"key": "global"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "key": "global", "updated_at": now_iso()})
     if await db.zones.count_documents({}) == 0:
@@ -979,6 +978,10 @@ async def seed():
                          "status": s["status"], "assigned_to": assigned, "history": [{"status": s["status"], "by": "system", "at": ts}],
                          "created_at": ts, "updated_at": ts, **({"settled_at": ts} if s["status"] == "Completed" else {})})
         await db.pickups.insert_many(docs)
+    async for p in db.pickups.find({"items": {"$exists": False}}, NO_ID):
+        await db.pickups.update_one({"id": p["id"]}, {"$set": {
+            "items": [{"material": p["material"], "weight": p.get("weight", p["weight_kg"]), "unit": p.get("unit", "Kg"), "weight_kg": p["weight_kg"], "rate": p.get("rate", 0), "amount": p["amount"]}],
+            "otp": f"{secrets.randbelow(10000):04d}", "payment_method": "cod", "service_fee": 0, "payment_status": "not_required"}})
 
 
 @app.on_event("startup")

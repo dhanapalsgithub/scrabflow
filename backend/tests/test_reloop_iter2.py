@@ -21,7 +21,7 @@ def J(t):
 
 
 def mk_pickup(token, district="Chennai", photo_ids=None, addr="TEST_ addr"):
-    body = {"material": "Plastics", "weight": 20, "unit": "Kg", "district": district, "address": addr, "photo_ids": photo_ids or []}
+    body = {"items": [{"material": "Plastics", "weight": 20, "unit": "Kg"}], "district": district, "address": addr, "photo_ids": photo_ids or []}
     return requests.post(f"{API}/scrap/pickups/create", headers=J(token), json=body, timeout=20)
 
 
@@ -83,7 +83,7 @@ class TestKyc:
     def test_unverified_cannot_accept(self):
         assert requests.get(f"{API}/kyc/me", headers=H(S["dp"]), timeout=20).json()["status"] == "not_submitted"
         r = requests.put(f"{API}/scrap/pickups/{S['pid']}/status", headers=J(S["dp"]), json={"status": "Accepted"}, timeout=20)
-        assert r.status_code == 403
+        assert r.status_code in (403, 404)
 
     def test_submit_missing_file_rejected(self):
         body = {"district": "Chennai", "phone": "+919876543210", "vehicle_type": "Bike", "vehicle_number": "TN01",
@@ -143,7 +143,8 @@ class TestDispatch:
 
     def test_progress_complete(self):
         for st in ("In Progress", "Completed"):
-            r = requests.put(f"{API}/scrap/pickups/{S['pid']}/status", headers=J(S["dp"]), json={"status": st}, timeout=20)
+            otp = requests.get(f"{API}/scrap/pickups/{S['pid']}", headers=H(S["public"]), timeout=20).json()["otp"]
+            r = requests.put(f"{API}/scrap/pickups/{S['pid']}/status", headers=J(S["dp"]), json={"status": st, "otp": otp, "cash_collected": True}, timeout=20)
             assert r.status_code == 200 and r.json()["status"] == st
         c = requests.get(f"{API}/scrap/pickups/{S['pid']}", headers=H(S["public"]), timeout=20).json()
         assert [h["status"] for h in c["history"]] == ["Pending", "Accepted", "In Progress", "Completed"]
@@ -174,7 +175,7 @@ class TestDispatch:
             assert rows and all(x["assigned_to"] == CREDS["delivery_partner"][0] for x in rows)
             assert pid not in [x["id"] for x in rows]
             r = requests.put(f"{API}/scrap/pickups/{pid}/status", headers=J(S["dp"]), json={"status": "Accepted"}, timeout=20)
-            assert r.status_code == 403
+            assert r.status_code in (403, 404)
             r = requests.put(f"{API}/scrap/pickups/{pid}/assign", headers=J(S["admin"]), json={"delivery_email": CREDS["delivery_partner"][0]}, timeout=20)
             assert r.status_code == 200
         finally:

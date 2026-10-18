@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 3 full-stack testing: multi-item pickups, custom scrap types, pickup OTP + COD service fee completion, Razorpay disabled state, head/district admin scoping, and the shadcn Select/DatePicker migration. Backend: 66/67 pytest pass across 3 suites (iter1/iter2 suites updated to the items[] + otp API). Frontend: all requested flows pass in the UI at 1920px and 390px. 1 real bug found: the admin assign endpoint returns the customer's OTP.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/scrap/pickups/{id}/assign", "issue": "The response returns the raw pickup document, including the customer's 'otp'. This breaks the rule that the OTP is never returned to admin, delivery or partner APIs. Fix: return strip_otp(await db.pickups.find_one(...), user) (server.py line ~781).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/scrap/pickups/{id}/status", "issue": "Unverified or admin_assign-mode delivery partners now get 404 instead of the more helpful 403 ('Complete your verification...' / 'assigned by admin'). can_view_pickup hides the pool before the 403 checks run. Access is still blocked correctly; iter2 tests now accept 403 or 404."},
+      {"endpoint": "PUT /api/scrap/pickups/{id}/status (admin Completed)", "issue": "If the admin completes a COD pickup without ticking cash collected, payment_status stays 'pending' forever, so a Completed order keeps showing '₹25 Due'. own_online_pickup would also allow a Razorpay order for an already-completed pickup. Consider marking these 'waived', or blocking payment on Completed pickups."},
+      {"endpoint": "startup seed()", "issue": "On a fresh DB the items/otp migration runs BEFORE SAMPLE_PICKUPS are inserted. Sample pickups then have no otp until the next restart, so a delivery partner can never complete them (the otp comparison is against None). Move the migration after the sample insert, or add items/otp/payment fields in the sample docs."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Area Management (district admin)", "issues": ["Subtitle still says 'across Tamil Nadu' for a district-scoped admin. Cosmetic."]},
+      {"screen": "Desktop My Pickups / All Pickups tables", "issues": ["At 1920px the table needs a horizontal scroll (the Date/Action columns are cut off). Acceptable, but these columns could be condensed."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_reloop_iter3.py", "/app/backend/tests/test_reloop_api.py", "/app/backend/tests/test_reloop_iter2.py", "/app/test_reports/pytest/pytest_results_iter3.xml"],
+  "action_items": [
+    "Wrap the /scrap/pickups/{id}/assign response in strip_otp so the customer OTP is not leaked to admins",
+    "(minor) Handle payment_status when an admin completes a COD pickup without cash collected",
+    "(minor) Fix seed ordering so fresh-DB sample pickups get an otp, items and payment fields"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1007 lines; split it into routers (auth, pickups, zones, admin, payments, kyc, files)",
+    "assign_pickup leaks the otp (see above)",
+    "update_user allows admin_scope on non-admin users (validated only against districts). Harmless but untidy.",
+    "Settings rate keys are arbitrary user strings stored as Mongo field names. Names containing '.' or starting with '$' could break the doc; validate the scrap type name charset.",
+    "Playbook: bcrypt $2b$ OK; brute-force lockout after 5 fails is implemented; seed resets the password unless password_changed. Auth uses a Bearer token (no httpOnly cookies) and CORS is '*' with allow_credentials=False, which is consistent for header auth."
+  ],
+  "updated_files": ["/app/backend/tests/test_reloop_api.py", "/app/backend/tests/test_reloop_iter2.py", "/app/backend/tests/test_reloop_iter3.py"],
+  "success_rate": {"backend": "98.5% (66/67)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "None persisted. TEST_ pickups/users/zones were removed. Settings were restored to 4 types at 12/18/45/35, service_fee 25, dispatch open. test32 KYC is verified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the suites serially: pytest /app/backend/tests -n 0 (all 3 files). The iter3 file uses the module-scoped dict S and cleans TEST* pickups/zones and the test_iter3_madurai user in teardown. Pickup create now needs items:[{material,weight,unit}]. Delivery Completed needs otp (read it from the customer's GET /scrap/pickups/{id}) plus cash_collected when payment_status is pending. The UiSelect option testid is {testId}-option-{slug(value)} (e.g. login-role-select-option-delivery-partner). Verified in the UI: sell multi-item (₹650 for 10/5/2 kg + 0.01 t), My Pickups OTP + timeline-otp, delivery accept→in progress→complete dialog (wrong OTP / no cash rejected), admin complete without OTP, settings add/remove TEST_Glass and service fee, user scope selects, district-admin zones locked to Madurai, 390px layouts. To recheck after the fix: test_assign_endpoint_does_not_leak_otp."
+}
