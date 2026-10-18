@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 2 full test of ReLoop (scrap photos, pickup timeline, KYC verification, admin assign, dispatch_mode, district admins, DataTable on all lists, Help & Guide EN/Tamil, responsive). Backend: 49/49 pytest pass (21 new iter-2 tests + 28 regression tests; the regression suite now makes sure test32 is KYC verified first). Frontend: every requested flow works end to end in the UI. Customer uploads 2 photos, removes 1 and books; Track opens the timeline with the photo. Unverified partner sees the banner and a disabled Accept button. Partner submits KYC (3 uploads) and status becomes Under Review. Admin review dialog shows 3 docs; Reject needs a reason; partner sees the reason and resubmits; admin approves. Verified partner accepts, and the customer timeline shows 'Accepted by Suresh Delivery · Vehicle TN 01 AB 1234' plus the partner card. Partner moves the order to In Progress. Admin assign-select lists verified partners and assigns. In admin_assign mode the partner sees only assigned orders and no Accept buttons. A Madurai district admin sees only Madurai data, gets 403 on settings and cannot see the admin role option. DataTable search, dates, page size, prev/next and filtered export work on all 9 lists. Help tabs, Tamil toggle and txt download work for all 5 roles. No horizontal overflow at 390/768; mobile cards and mobile-menu-btn work. Issues found: 1 medium business-logic hole in backend, 1 medium frontend stale-KYC bug, plus minor items.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/scrap/pickups/{id}/status", "issue": "A verified delivery partner can set an UNASSIGNED Pending order straight to 'Cancelled', 'Completed' or 'In Progress' without accepting it first. Reproduced: all 3 returned 200 and the order was auto-assigned to the partner. So any partner can cancel any customer's open order or mark it completed/settled. Partners can also Cancel their own assigned orders (the UI status select offers Cancelled/Pending). Fix: if unassigned, only allow 'Accepted'; for assigned partners allow only Accepted→In Progress→Completed (+ 'Pending' = return to pool); do not let delivery partners Cancel.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/login", "issue": "Brute-force lockout key uses request.client.host, which is the ingress pod IP (seen 10.79.138.2 and 10.79.138.5). 6 bad attempts in a row all returned 401, never 429, because the count is split across proxy IPs. Use the first IP in X-Forwarded-For (or key on email only)."},
+      {"endpoint": "GET /api/scrap/pickups/{id}", "issue": "can_view_pickup lets a delivery partner see any Pending pickup detail even in admin_assign mode, and unverified partners can list Pending orders with customer address. This exposes customer data before KYC. Consider requiring verified KYC (and open mode) to see unassigned orders."},
+      {"endpoint": "GET /api/files/{id}", "issue": "A district-scoped admin can download scrap photos from any district (the category=='scrap' check skips in_scope)."},
+      {"endpoint": "seed SAMPLE_PICKUPS", "issue": "Seeded Accepted/In Progress/Completed pickups set assigned_to=test32 but no assigned_name/assigned_vehicle, so customers see 'Not assigned' on e.g. RL-F17DA8 (Accepted) and the timeline has no partner card."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "RealPickupsList / AuthContext", "issue": "Stale KYC state: after an admin approves a partner, the logged-in partner still sees the 'Under review' banner and a disabled Accept button when moving between pages. It only updates after a full reload or re-login. /me is fetched only when DashboardPage mounts, and VerificationView loads /kyc/me but never calls updateUser. Fix: in VerificationView call updateUser({kyc}) after GET /kyc/me, and/or refresh /me on section change or with polling.", "selector": "[data-testid=accept-order-{id}], [data-testid=kyc-status-banner]", "priority": "MEDIUM"},
+      {"component": "DataTable", "issue": "Duplicate data-testids: desktop rows and mobile cards are both in the DOM (one hidden with CSS), so every cell testid (accept-order-*, status-select-*, track-pickup-*, assign-select-*) appears twice. Strict selectors fail unless scoped with the {testId}-row-{id} or {testId}-card-{id} wrapper. Consider rendering only one layout (matchMedia) or giving card elements their own testids.", "selector": "[data-testid=accept-order-RL-xxx]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Global Settings dispatch-mode save", "issue": "Once (1 of 2 tries), saving with admin_assign selected showed the 'Global settings saved' toast but the DB still had dispatch_mode 'open'. The retry worked and the PUT body had dispatch_mode admin_assign. Could not reproduce, so it may be a test race; worth a quick look.", "affected_selectors": ["dispatch-mode-select", "save-settings-btn"]}
+    ],
+    "design_issues": [
+      {"screen": "DataTable toolbar (all lists)", "issues": ["From/To use the native browser date picker (input type=date) instead of the shadcn Calendar/Popover", "Panel title uses the unfiltered count (e.g. '7 users' / '17 orders') while the footer shows the filtered count (1 records), which looks inconsistent"]},
+      {"screen": "Pickup Requests (delivery, admin_assign mode)", "issues": ["Subtitle still says 'Open pickups waiting for a partner, plus orders assigned to you' while only assigned orders are shown"]},
+      {"screen": "Global Settings / Users for district admin", "issues": ["Settings menu and Save button are shown to district admins, who only get a 403 toast on save. Hide the menu item or make the page read-only for scoped admins"]},
+      {"screen": "Pickup Timeline dialog @390px", "issues": ["Dialog is edge-to-edge (x=0) with no side margin, and the close X nearly touches the status badge"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_reloop_iter2.py", "/app/backend/tests/test_reloop_api.py", "/app/backend/tests/conftest.py", "/app/test_reports/pytest/pytest_results_iter2.xml"],
+  "action_items": [
+    "HIGH: Restrict delivery partner status transitions in update_status (unassigned → Accepted only; no Cancel by partner; enforce Accepted→In Progress→Completed order)",
+    "MEDIUM: Fix stale user.kyc in the frontend after admin approval (updateUser from /kyc/me in VerificationView; refresh /me on navigation/poll)",
+    "Use X-Forwarded-For client IP in the login lockout key",
+    "Hide unassigned Pending pickups from unverified partners (and from all partners in admin_assign mode) in list and detail",
+    "Seed data: fill assigned_name/assigned_vehicle for seeded assigned pickups",
+    "Minor UX: hide Settings for district admins, fix the admin_assign subtitle, use shadcn date picker, make the DataTable title use the filtered count"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 858 lines (>700); split into routers (auth, pickups, kyc, files, admin)",
+    "can_view_pickup + update_status: delivery-partner state machine missing (see HIGH issue)",
+    "download_file: scrap category skips the district scope check for scoped admins",
+    "update_user: a district admin can change a user's district to outside their scope (patch.district is not validated against scope)",
+    "admin_scope in UserCreate is not validated against service_districts (free string)",
+    "zone CRUD is not district-scoped for district admins (global zones editable)",
+    "ComplianceView monthly table uses dateKey='month' ('2026-10'); a From date in the middle of the month hides that month"
+  ],
+  "updated_files": ["/app/backend/tests/conftest.py (new: shared helpers + ensure_delivery_verified)", "/app/backend/tests/test_reloop_iter2.py (new)", "/app/backend/tests/test_reloop_api.py (tokens fixture now ensures test32 is KYC verified)"],
+  "success_rate": {"backend": "100% of tests (49/49), 1 HIGH business-logic gap found via extra probing", "frontend": "~95% (all requested flows pass; stale-KYC refresh bug)"},
+  "test_credentials": "From /app/memory/test_credentials.md (all worked). bcrypt hashes are $2b$. Auth is Bearer token in localStorage (no httpOnly app cookie); CORS '*' with allow_credentials False is fine for Bearer.",
+  "seed_data_creation": "None left behind. Created and deleted: TEST_ pickups (address ^TEST), test_dp2@example.com, test_madurai_admin@example.com, test_madurai_ui@example.com. Final state: dispatch_mode=open, rates 12/18/45/35, test32 KYC verified (Bike, TN 01 AB 1234, Chennai, +919876543210). Uploaded test files stay in object storage (no delete API).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend suite serially: pytest /app/backend/tests/test_reloop_api.py /app/backend/tests/test_reloop_iter2.py -n 0 (backend/pytest.ini forces -n 2 loadscope; the iter2 file shares module state across classes, so parallel runs break it). The iter2 module fixture resets test32 KYC to not_submitted through Mongo and leaves it VERIFIED with TN 01 AB 1234 at the end. Desktop rows and mobile cards duplicate testids: scope selectors with [data-testid=real-pickups-table-row-{id}]. To recheck: partner status-transition restrictions, and the stale-KYC fix (partner logged in, admin approves, partner clicks nav-pickups without reload, Accept should be enabled).",
+  "rca of the issue": "Stale KYC: AuthContext.user is cached in localStorage. DashboardPage refreshes /me only when user.email changes (on mount), so an approval made elsewhere is not picked up until a reload. Partner transition hole: update_status for delivery_partner only checks KYC, finalized status, admin_assign mode and assignee. It never validates the target status, so any status in STATUSES is accepted and assignee_fields are set automatically."
+}

@@ -28,6 +28,8 @@ def _login(role):
 
 @pytest.fixture(scope="session")
 def tokens():
+    from conftest import ensure_delivery_verified
+    ensure_delivery_verified()  # iteration 2: delivery partner must be KYC verified to handle pickups
     return {role: _login(role) for role in CREDS}
 
 

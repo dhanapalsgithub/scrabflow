@@ -14,7 +14,7 @@ export const SidebarContent = ({ user, onLogout, onNavigate }) => (
     <div className="px-2"><Logo /></div>
     <p className="mt-8 px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Operations</p>
     <nav className="mt-3 flex flex-1 flex-col gap-1 overflow-y-auto" data-testid="sidebar-nav">
-      {menuFor(user.role).map(({ key, label, icon: Icon }) => (
+      {menuFor(user).map(({ key, label, icon: Icon }) => (
         <NavLink
           key={key}
           to={`/dashboard/${key}`}

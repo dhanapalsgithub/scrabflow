@@ -82,7 +82,7 @@ export const PickupTimeline = ({ pickupId, onClose }) => {
   const { data } = usePolling(() => api.get(`/scrap/pickups/${pickupId}`).then((r) => r.data));
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-2xl" data-testid="pickup-timeline-dialog">
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-2xl pt-10 sm:max-w-2xl" data-testid="pickup-timeline-dialog">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">Pickup Timeline <OrderId id={pickupId} /> {data && <StatusBadge status={data.status} testId="timeline-current-status" />}</DialogTitle>
         </DialogHeader>

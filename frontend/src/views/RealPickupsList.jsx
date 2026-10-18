@@ -14,6 +14,7 @@ import { KycBanner } from "@/views/VerificationView";
 import { PICKUP_COLUMNS } from "@/views/UserPickupsList";
 
 const FINAL = ["Completed", "Cancelled"];
+const DELIVERY_OPTIONS = { Accepted: ["Accepted", "In Progress", "Pending"], "In Progress": ["In Progress", "Completed", "Pending"] };
 
 const sum = (rows, pred) => rows.filter(pred).reduce((a, p) => a + p.amount, 0);
 
@@ -68,7 +69,7 @@ export default function RealPickupsList({ mode = "all" }) {
     { label: "District & Address", wide: true, render: (p) => <><p className="font-medium">{p.district}</p><p className="max-w-[220px] truncate text-xs text-slate-500">{p.address}</p></> },
     { label: "Status", render: (p) => canChange(p) ? (
       <select data-testid={`status-select-${p.id}`} value={p.status} onChange={(e) => update(p.id, e.target.value)} className={selectSm}>
-        {STATUSES.map((s) => <option key={s}>{s}</option>)}
+        {(isAdmin ? STATUSES : DELIVERY_OPTIONS[p.status] || [p.status]).map((s) => <option key={s} value={s}>{s === "Pending" && !isAdmin ? "Release to pool" : s}</option>)}
       </select>
     ) : <StatusBadge status={p.status} testId={`pickup-status-${p.id}`} /> },
     { label: "Date", render: (p) => <span className="text-slate-500">{fmtDate(p.created_at)}</span> },
@@ -93,7 +94,7 @@ export default function RealPickupsList({ mode = "all" }) {
   return (
     <div className="space-y-6">
       <PageHeader title={mode === "assigned" ? "My Assignments" : "Pickup Requests"}
-        subtitle={mode === "assigned" ? "Orders you have accepted. Move them through the pipeline to settle payouts." : isDelivery ? "Open pickups waiting for a partner, plus orders assigned to you." : "Every customer pickup across districts, synced live."}>
+        subtitle={mode === "assigned" ? "Orders you have accepted. Move them through the pipeline to settle payouts." : isDelivery ? "Pickups available to you and orders assigned to you." : "Every customer pickup across districts, synced live."}>
         <LiveSync lastSync={lastSync} onRefresh={refresh} />
       </PageHeader>
 
@@ -106,7 +107,7 @@ export default function RealPickupsList({ mode = "all" }) {
         {metrics.map((m, i) => <MetricCard key={m.key} {...m} index={i} testId={`pickups-metric-${m.key}`} />)}
       </div>
 
-      <DataTable testId="real-pickups-table" title={`${rows.length} orders`} columns={columns} rows={rows}
+      <DataTable testId="real-pickups-table" title="Orders" columns={columns} rows={rows}
         searchKeys={["id", "customer_email", "material", "address", "district", "assigned_name"]}
         exportName={mode === "assigned" ? "my-assignments" : "all-pickups"} exportColumns={PICKUP_COLUMNS}
         filters={

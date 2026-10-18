@@ -1,7 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, ChevronLeft, ChevronRight, CalendarDays, X } from "lucide-react";
 import { TH, TD, TR, inputCls, selectSm } from "@/lib/format";
 import { Panel, ExportButton } from "@/components/reloop/Primitives";
+
+const MQ = "(max-width: 767px)";
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia(MQ).matches);
+  useEffect(() => {
+    const m = window.matchMedia(MQ);
+    const fn = (e) => setMobile(e.matches);
+    m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  }, []);
+  return mobile;
+}
 
 const cellValue = (col, row) => (col.render ? col.render(row) : row[col.key] ?? "—");
 
@@ -63,7 +75,7 @@ const Pager = ({ page, pages, size, setSize, setPage, total, testId }) => (
 );
 
 const MobileCards = ({ columns, rows, rowKey, testId }) => (
-  <div className="divide-y divide-slate-100 md:hidden">
+  <div className="divide-y divide-slate-100">
     {rows.map((r) => {
       const [first, ...rest] = columns;
       return (
@@ -89,6 +101,7 @@ export const DataTable = ({ columns, rows = [], dateKey = "created_at", searchKe
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(pageSize);
+  const mobile = useIsMobile();
   const filtered = useMemo(() => filterRows(rows, { q, from, to, dateKey, searchKeys }), [rows, q, from, to, dateKey, searchKeys]);
   const pages = Math.max(1, Math.ceil(filtered.length / size));
   const cur = Math.min(page, pages);
@@ -103,9 +116,11 @@ export const DataTable = ({ columns, rows = [], dateKey = "created_at", searchKe
       <Toolbar q={q} setQ={reset(setQ)} from={from} setFrom={reset(setFrom)} to={to} setTo={reset(setTo)} dateKey={dateKey} filters={filters} testId={testId} />
       {visible.length === 0 ? (
         <p className="px-4 py-14 text-center text-sm text-slate-400" data-testid={`${testId}-empty`}>{emptyText}</p>
+      ) : mobile ? (
+        <MobileCards columns={columns} rows={visible} rowKey={rowKey} testId={testId} />
       ) : (
         <>
-          <div className="hidden overflow-x-auto md:block">
+          <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="border-b border-slate-200 bg-slate-50/80"><tr>{columns.map((c) => <th key={c.label} className={TH}>{c.label}</th>)}</tr></thead>
               <tbody>
@@ -117,7 +132,6 @@ export const DataTable = ({ columns, rows = [], dateKey = "created_at", searchKe
               </tbody>
             </table>
           </div>
-          <MobileCards columns={columns} rows={visible} rowKey={rowKey} testId={testId} />
         </>
       )}
       <Pager page={cur} pages={pages} size={size} setSize={setSize} setPage={setPage} total={filtered.length} testId={testId} />

@@ -21,6 +21,17 @@ Household seller, corporate bulk seller, delivery partner, hub/business partner,
 - Price rates page, profile + password change, CSV export on all tables
 - Testing: 28/28 backend tests, all frontend flows pass
 
+## Iteration 2 (2026-10-18)
+User asked: pickup timeline; explain booking/dispatch flow (in Tamil) and add it to the app; admin assigns or orders go directly to delivery partners; delivery partner uploads licence + photo + selfie + vehicle no, verified by district admin; customers upload scrap photos; pagination + From/To dates + search on every list; user manual for all user types; fully responsive.
+- Pickup Timeline dialog (steps, notes, partner name/vehicle/phone, photos) on every pickup list
+- Dispatch mode setting: open (verified partners self-accept) / admin_assign; admin Assign dropdown always available
+- Delivery KYC (Verification page) + admin Partner Verification (approve/reject with reason); unverified partners can't see the open pool or act
+- Delivery state machine: unassigned→Accepted only; Accepted→In Progress→Completed; release to pool; no partner cancel
+- District admins (admin_scope) — scoped pickups/users/KYC/compliance; settings head-admin only
+- Scrap photos (Emergent object storage, private, served via /api/files/{id})
+- Shared DataTable: search, From/To dates, page size, pagination, filtered CSV, mobile card layout
+- Help & Guide page (English/Tamil, per-role guides, downloadable manual)
+
 ## Backlog
 - P1: Pickup detail drawer with status history timeline; delivery route map
 - P2: Email/SMS notifications on status change; payout records; pickup delete/archive for admins

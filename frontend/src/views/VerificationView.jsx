@@ -97,9 +97,9 @@ export default function VerificationView() {
   const [kyc, setKyc] = useState(null);
   const [districts, setDistricts] = useState([]);
   useEffect(() => {
-    api.get("/kyc/me").then((r) => setKyc(r.data));
+    api.get("/kyc/me").then((r) => { setKyc(r.data); updateUser({ kyc: r.data }); });
     api.get("/settings").then((r) => setDistricts(r.data.service_districts));
-  }, []);
+  }, [updateUser]);
   if (!kyc) return <LoadingBlock />;
   const saved = (k) => { setKyc(k); updateUser({ kyc: k }); };
   const canEdit = ["not_submitted", "rejected"].includes(kyc.status);

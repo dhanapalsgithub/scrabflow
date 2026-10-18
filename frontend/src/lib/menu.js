@@ -33,5 +33,7 @@ export const ROLE_LABELS = {
   delivery_partner: "Delivery Partner",
 };
 
-export const menuFor = (role) => (ROLE_MENUS[role] || []).map((key) => ({ key, ...ITEMS[key] }));
+export const sectionsFor = (user) =>
+  (ROLE_MENUS[user.role] || []).filter((k) => !(k === "settings" && (user.admin_scope || "All") !== "All"));
+export const menuFor = (user) => sectionsFor(user).map((key) => ({ key, ...ITEMS[key] }));
 export const labelFor = (key) => ITEMS[key]?.label || key;

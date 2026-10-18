@@ -4,7 +4,7 @@ import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
-import { ROLE_MENUS, labelFor } from "@/lib/menu";
+import { sectionsFor, labelFor } from "@/lib/menu";
 import { SidebarContent, Logo } from "@/components/reloop/Sidebar";
 import OverviewView from "@/views/OverviewView";
 import SellScrapForm from "@/views/SellScrapForm";
@@ -45,10 +45,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (user) api.get("/me").then((r) => updateUser(r.data)).catch(() => {});
-  }, [user?.email, updateUser]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.email, section, updateUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return <Navigate to="/login" replace />;
-  if (!(ROLE_MENUS[user.role] || []).includes(section)) return <Navigate to="/dashboard/overview" replace />;
+  if (!sectionsFor(user).includes(section)) return <Navigate to="/dashboard/overview" replace />;
 
   const View = VIEWS[section];
   const handleLogout = () => {

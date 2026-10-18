@@ -253,12 +253,22 @@ def assignee_fields(partner: dict) -> dict:
 CLEAR_ASSIGNEE = {"assigned_to": None, "assigned_name": "", "assigned_phone": "", "assigned_vehicle": ""}
 
 
-def can_view_pickup(user: dict, p: dict) -> bool:
+def is_verified(user: dict) -> bool:
+    return (user.get("kyc") or {}).get("status") == "verified"
+
+
+DELIVERY_NEXT = {"Accepted": {"In Progress", "Pending"}, "In Progress": {"Completed", "Pending"}}
+
+
+async def can_view_pickup(user: dict, p: dict) -> bool:
     role = user["role"]
     if role in CUSTOMER_ROLES:
         return p["customer_email"] == user["email"]
     if role == "delivery_partner":
-        return p.get("assigned_to") == user["email"] or p["status"] == "Pending"
+        if p.get("assigned_to") == user["email"]:
+            return True
+        open_pool = is_verified(user) and (await get_settings()).get("dispatch_mode") != "admin_assign"
+        return open_pool and p["status"] == "Pending" and not p.get("assigned_to")
     if role == "admin":
         return in_scope(user, p["district"])
     return True
@@ -325,7 +335,8 @@ async def root():
 @api.post("/login")
 async def login(body: LoginIn, request: Request):
     email = body.email.strip().lower()
-    identifier = f"{request.client.host if request.client else 'na'}:{email}"
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    identifier = f"{forwarded or (request.client.host if request.client else 'na')}:{email}"
     attempt = await db.login_attempts.find_one({"identifier": identifier})
     if attempt and attempt.get("count", 0) >= 5 and attempt.get("locked_until", "") > now_iso():
         raise HTTPException(429, "Too many failed attempts. Try again in 15 minutes.")
@@ -402,7 +413,7 @@ async def list_pickups(role: Optional[str] = None, email: Optional[str] = None, 
         query["customer_email"] = user["email"]
     elif user["role"] == "delivery_partner":
         settings = await get_settings()
-        if assigned == "me" or settings.get("dispatch_mode") == "admin_assign":
+        if assigned == "me" or settings.get("dispatch_mode") == "admin_assign" or not is_verified(user):
             query["assigned_to"] = user["email"]
         else:
             query["$or"] = [{"assigned_to": user["email"]}, {"status": "Pending"}]
@@ -456,22 +467,26 @@ async def create_pickup(body: PickupCreate, user: dict = Depends(require("public
 @api.put("/scrap/pickups/{pickup_id}/status")
 async def update_status(pickup_id: str, body: StatusUpdate, user: dict = Depends(current_user)):
     pickup = await db.pickups.find_one({"id": pickup_id}, NO_ID)
-    if not pickup or not can_view_pickup(user, pickup):
+    if not pickup or not await can_view_pickup(user, pickup):
         raise HTTPException(404, "Pickup not found")
     role = user["role"]
     if role in CUSTOMER_ROLES:
         if body.status != "Cancelled" or pickup["status"] != "Pending":
             raise HTTPException(400, "You can only cancel pickups that are still pending")
     elif role == "delivery_partner":
-        if (user.get("kyc") or {}).get("status") != "verified":
+        if not is_verified(user):
             raise HTTPException(403, "Complete your verification before handling pickups")
         if pickup["status"] in ("Completed", "Cancelled"):
             raise HTTPException(400, "This order is already finalized")
         if not pickup.get("assigned_to"):
             if (await get_settings()).get("dispatch_mode") == "admin_assign":
                 raise HTTPException(403, "Pickups are assigned by the admin right now")
+            if body.status != "Accepted":
+                raise HTTPException(400, "Accept the order first")
         elif pickup["assigned_to"] != user["email"]:
             raise HTTPException(403, "This order is assigned to another partner")
+        elif body.status not in DELIVERY_NEXT.get(pickup["status"], set()):
+            raise HTTPException(400, f"Cannot move from {pickup['status']} to {body.status}")
     elif role != "admin":
         raise HTTPException(403, "You do not have permission to update pickups")
     ts = now_iso()
@@ -609,6 +624,8 @@ async def update_user(user_id: str, body: UserUpdate, user: dict = Depends(requi
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if admin_district(user) and (patch.get("role") == "admin" or "admin_scope" in patch or target["role"] == "admin"):
         raise HTTPException(403, "Only head admins can manage admin accounts")
+    if "district" in patch and not in_scope(user, patch["district"]):
+        raise HTTPException(403, "You can only assign users to your own district")
     if patch.get("role") == "delivery_partner" and not target.get("kyc"):
         patch["kyc"] = {"status": "not_submitted"}
     if target["email"] == user["email"] and (patch.get("active") is False or patch.get("role", "admin") != "admin"):
@@ -669,7 +686,7 @@ async def compliance(user: dict = Depends(require("admin", "corporate"))):
 @api.get("/scrap/pickups/{pickup_id}")
 async def pickup_detail(pickup_id: str, user: dict = Depends(current_user)):
     pickup = await db.pickups.find_one({"id": pickup_id}, NO_ID)
-    if not pickup or not can_view_pickup(user, pickup):
+    if not pickup or not await can_view_pickup(user, pickup):
         raise HTTPException(404, "Pickup not found")
     return pickup
 
@@ -736,7 +753,7 @@ async def download_file(file_id: str, user: dict = Depends(current_user)):
         raise HTTPException(404, "File not found")
     owner = await db.users.find_one({"email": rec["owner_email"]}, {"_id": 0, "district": 1})
     allowed = rec["owner_email"] == user["email"] or \
-        (user["role"] == "admin" and (rec["category"] == "scrap" or in_scope(user, (owner or {}).get("district", "")))) or \
+        (user["role"] == "admin" and in_scope(user, (owner or {}).get("district", ""))) or \
         (rec["category"] == "scrap" and user["role"] in ("delivery_partner", "partner"))
     if not allowed:
         raise HTTPException(404, "File not found")
@@ -811,6 +828,10 @@ async def seed():
     await db.files.create_index("id", unique=True)
     await db.users.update_many({"role": "admin", "admin_scope": {"$exists": False}}, {"$set": {"admin_scope": "All"}})
     await db.users.update_many({"role": "delivery_partner", "kyc": {"$exists": False}}, {"$set": {"kyc": {"status": "not_submitted"}}})
+    async for p in db.pickups.find({"assigned_to": {"$ne": None}, "assigned_name": {"$exists": False}}, {"_id": 0, "id": 1, "assigned_to": 1}):
+        partner = await db.users.find_one({"email": p["assigned_to"]}, USER_PROJ)
+        if partner:
+            await db.pickups.update_one({"id": p["id"]}, {"$set": assignee_fields(partner)})
     if not await db.settings.find_one({"key": "global"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "key": "global", "updated_at": now_iso()})
     if await db.zones.count_documents({}) == 0:
