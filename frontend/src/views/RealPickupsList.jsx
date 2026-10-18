@@ -1,22 +1,34 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Search, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { usePolling } from "@/hooks/usePolling";
-import { inr, kg, fmtDate, TH, TD, TR, STATUSES, selectSm, inputCls } from "@/lib/format";
-import { Panel, PageHeader, StatusBadge, LoadingBlock, EmptyRow, OrderId, ExportButton, MetricCard } from "@/components/reloop/Primitives";
+import { inr, kg, fmtDate, STATUSES, selectSm } from "@/lib/format";
+import { PageHeader, StatusBadge, LoadingBlock, MetricCard } from "@/components/reloop/Primitives";
 import { LiveSync } from "@/components/reloop/LiveSync";
+import { DataTable } from "@/components/reloop/DataTable";
+import { PickupTimeline, TrackButton } from "@/components/reloop/PickupTimeline";
+import { KycBanner } from "@/views/VerificationView";
 import { PICKUP_COLUMNS } from "@/views/UserPickupsList";
+
+const FINAL = ["Completed", "Cancelled"];
 
 const sum = (rows, pred) => rows.filter(pred).reduce((a, p) => a + p.amount, 0);
 
 export default function RealPickupsList({ mode = "all" }) {
   const { user } = useAuth();
-  const canEdit = ["delivery_partner", "admin"].includes(user.role);
-  const [q, setQ] = useState("");
+  const isAdmin = user.role === "admin";
+  const isDelivery = user.role === "delivery_partner";
+  const verified = isDelivery && user.kyc?.status === "verified";
   const [status, setStatus] = useState("All");
   const [district, setDistrict] = useState("All");
+  const [tracking, setTracking] = useState(null);
+  const [partners, setPartners] = useState([]);
+  useEffect(() => {
+    if (isAdmin) api.get("/admin/delivery-partners").then((r) => setPartners(r.data));
+  }, [isAdmin]);
   const { data, loading, refresh, setData, lastSync } = usePolling(() =>
     api.get("/scrap/pickups/all", { params: { role: user.role, email: undefined, assigned: mode === "assigned" ? "me" : undefined } }).then((r) => r.data)
   );
@@ -32,14 +44,46 @@ export default function RealPickupsList({ mode = "all" }) {
     }
   };
 
+  const assign = async (id, email) => {
+    try {
+      const { data: updated } = await api.put(`/scrap/pickups/${id}/assign`, { delivery_email: email });
+      setData((rows) => rows.map((r) => (r.id === id ? updated : r)));
+      toast.success(`Order ${id} assigned to ${updated.assigned_name}`);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
   if (loading && !data) return <LoadingBlock />;
   const all = data || [];
   const districts = [...new Set(all.map((p) => p.district))].sort();
-  const needle = q.trim().toLowerCase();
-  const rows = all.filter((p) =>
-    (status === "All" || p.status === status) && (district === "All" || p.district === district) &&
-    (!needle || [p.id, p.customer_email, p.material, p.address].some((v) => String(v).toLowerCase().includes(needle)))
-  );
+  const rows = all.filter((p) => (status === "All" || p.status === status) && (district === "All" || p.district === district));
+  const canChange = (p) => (isAdmin && !FINAL.includes(p.status)) || (verified && p.assigned_to === user.email && !FINAL.includes(p.status));
+  const columns = [
+    { label: "Order ID", render: (p) => <TrackButton id={p.id} onClick={() => setTracking(p.id)} /> },
+    { label: "Material", key: "material" },
+    { label: "Weight (kg)", render: (p) => <span className="font-mono font-bold">{kg(p.weight_kg)}</span> },
+    { label: "Total Amount", render: (p) => <span className="font-mono font-bold text-slate-900">{inr(p.amount)}</span> },
+    { label: "Customer Email", key: "customer_email" },
+    { label: "District & Address", wide: true, render: (p) => <><p className="font-medium">{p.district}</p><p className="max-w-[220px] truncate text-xs text-slate-500">{p.address}</p></> },
+    { label: "Status", render: (p) => canChange(p) ? (
+      <select data-testid={`status-select-${p.id}`} value={p.status} onChange={(e) => update(p.id, e.target.value)} className={selectSm}>
+        {STATUSES.map((s) => <option key={s}>{s}</option>)}
+      </select>
+    ) : <StatusBadge status={p.status} testId={`pickup-status-${p.id}`} /> },
+    { label: "Date", render: (p) => <span className="text-slate-500">{fmtDate(p.created_at)}</span> },
+  ];
+  if (isAdmin) columns.push({ label: "Assign Partner", render: (p) => FINAL.includes(p.status) ? <span className="text-xs text-slate-500">{p.assigned_name || "—"}</span> : (
+    <select data-testid={`assign-select-${p.id}`} value={p.assigned_to || ""} onChange={(e) => e.target.value && assign(p.id, e.target.value)} className={`${selectSm} max-w-[180px]`}>
+      <option value="">{partners.length ? "Select partner" : "No verified partners"}</option>
+      {partners.map((d) => <option key={d.email} value={d.email}>{d.name} · {d.vehicle_number}</option>)}
+    </select>) });
+  if (isDelivery) columns.push({ label: "Action", render: (p) => p.status === "Pending" && !p.assigned_to ? (
+    <button type="button" disabled={!verified} data-testid={`accept-order-${p.id}`} onClick={() => update(p.id, "Accepted")} title={verified ? "" : "Complete verification first"}
+      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40">
+      <CheckCircle2 className="h-3.5 w-3.5" /> Accept Order
+    </button>) : <span className="text-xs text-slate-400">{p.assigned_to === user.email ? "Assigned to you" : "—"}</span> });
+  if (!isAdmin && !isDelivery) columns.push({ label: "Partner", render: (p) => <span className="text-xs">{p.assigned_name || "—"}</span> });
   const metrics = [
     { label: "Total Volume Amount", value: sum(all, (p) => p.status !== "Cancelled"), format: "inr", hint: `${all.length} orders`, key: "total" },
     { label: "Total Paid / Settled", value: sum(all, (p) => p.status === "Completed"), format: "inr", hint: "Completed orders", key: "paid" },
@@ -49,23 +93,24 @@ export default function RealPickupsList({ mode = "all" }) {
   return (
     <div className="space-y-6">
       <PageHeader title={mode === "assigned" ? "My Assignments" : "Pickup Requests"}
-        subtitle={mode === "assigned" ? "Orders you have accepted. Move them through the pipeline to settle payouts." : "Every customer pickup across all districts, synced live."}>
+        subtitle={mode === "assigned" ? "Orders you have accepted. Move them through the pipeline to settle payouts." : isDelivery ? "Open pickups waiting for a partner, plus orders assigned to you." : "Every customer pickup across districts, synced live."}>
         <LiveSync lastSync={lastSync} onRefresh={refresh} />
-        <ExportButton filename={mode === "assigned" ? "my-assignments" : "all-pickups"} columns={PICKUP_COLUMNS} rows={rows} />
       </PageHeader>
+
+      {isDelivery && !verified && (
+        <div className="space-y-2"><KycBanner kyc={user.kyc} />
+          <Link to="/dashboard/verification" className="inline-block text-sm font-semibold text-emerald-700 underline" data-testid="go-verification-link">Go to Verification →</Link></div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         {metrics.map((m, i) => <MetricCard key={m.key} {...m} index={i} testId={`pickups-metric-${m.key}`} />)}
       </div>
 
-      <Panel bodyClass="p-0" testId="real-pickups-table"
-        title={`${rows.length} orders`}
-        actions={
+      <DataTable testId="real-pickups-table" title={`${rows.length} orders`} columns={columns} rows={rows}
+        searchKeys={["id", "customer_email", "material", "address", "district", "assigned_name"]}
+        exportName={mode === "assigned" ? "my-assignments" : "all-pickups"} exportColumns={PICKUP_COLUMNS}
+        filters={
           <>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input data-testid="pickups-search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search ID, email, address" className={`${inputCls} h-10 w-60 pl-9`} />
-            </div>
             <select data-testid="pickups-status-filter" value={status} onChange={(e) => setStatus(e.target.value)} className={`${selectSm} h-10`}>
               {["All", ...STATUSES].map((s) => <option key={s}>{s}</option>)}
             </select>
@@ -73,48 +118,8 @@ export default function RealPickupsList({ mode = "all" }) {
               {["All", ...districts].map((s) => <option key={s}>{s}</option>)}
             </select>
           </>
-        }>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-slate-200 bg-slate-50/80">
-              <tr>{["Order ID", "Material", "Weight (kg)", "Total Amount", "Customer Email", "District & Address", "Status", "Date", canEdit ? "Action" : null].filter(Boolean).map((h) => <th key={h} className={TH}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && <EmptyRow cols={9} />}
-              {rows.map((p) => {
-                const locked = user.role !== "admin" && ["Completed", "Cancelled"].includes(p.status);
-                return (
-                  <tr key={p.id} className={TR} data-testid={`pickup-row-${p.id}`}>
-                    <td className={TD}><OrderId id={p.id} /></td>
-                    <td className={TD}>{p.material}</td>
-                    <td className={`${TD} font-mono font-bold`}>{kg(p.weight_kg)}</td>
-                    <td className={`${TD} font-mono font-bold text-slate-900`}>{inr(p.amount)}</td>
-                    <td className={TD}>{p.customer_email}</td>
-                    <td className={TD}><p className="font-medium">{p.district}</p><p className="max-w-[220px] truncate text-xs text-slate-500">{p.address}</p></td>
-                    <td className={TD}>
-                      {canEdit && !locked ? (
-                        <select data-testid={`status-select-${p.id}`} value={p.status} onChange={(e) => update(p.id, e.target.value)} className={selectSm}>
-                          {STATUSES.map((s) => <option key={s}>{s}</option>)}
-                        </select>
-                      ) : <StatusBadge status={p.status} testId={`pickup-status-${p.id}`} />}
-                    </td>
-                    <td className={`${TD} text-slate-500`}>{fmtDate(p.created_at)}</td>
-                    {canEdit && (
-                      <td className={TD}>
-                        {p.status === "Pending" ? (
-                          <button type="button" data-testid={`accept-order-${p.id}`} onClick={() => update(p.id, "Accepted")} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Accept Order
-                          </button>
-                        ) : <span className="text-xs text-slate-400">{p.assigned_to ? `by ${p.assigned_to.split("@")[0]}` : "—"}</span>}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+        } />
+      {tracking && <PickupTimeline pickupId={tracking} onClose={() => setTracking(null)} />}
     </div>
   );
 }

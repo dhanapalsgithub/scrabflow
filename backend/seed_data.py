@@ -6,6 +6,7 @@ DEFAULT_SETTINGS = {
     "support_email": "support@reloop.in",
     "min_pickup_kg": 5,
     "service_districts": DISTRICTS,
+    "dispatch_mode": "open",
 }
 
 SEED_USERS = [

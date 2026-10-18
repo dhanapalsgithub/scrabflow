@@ -6,6 +6,7 @@ import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { inr, kg, inputCls, btnPrimary, slug, MATERIALS } from "@/lib/format";
 import { Panel, PageHeader, LoadingBlock } from "@/components/reloop/Primitives";
+import { PhotoPicker } from "@/components/reloop/Files";
 
 const ICONS = { "Mixed Paper": FileText, Plastics: Package, "E-Waste": Cpu, Metals: Wrench };
 const Label = ({ children }) => <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">{children}</label>;
@@ -15,6 +16,7 @@ export default function SellScrapForm() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState([]);
   const [form, setForm] = useState({ material: "Mixed Paper", weight: "", unit: "Kg", district: user.district || "", address: user.address || "", phone: user.phone || "", preferred_date: "", notes: "" });
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function SellScrapForm() {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await api.post("/scrap/pickups/create", { ...form, weight: parseFloat(form.weight) });
+      const { data } = await api.post("/scrap/pickups/create", { ...form, weight: parseFloat(form.weight), photo_ids: photos.map((p) => p.id) });
       toast.success(`Pickup ${data.id} requested`, { description: `Estimated earnings ${inr(data.amount)}` });
       setForm({ ...form, weight: "", notes: "", preferred_date: "" });
       navigate("/dashboard/my-pickups");
@@ -69,7 +71,7 @@ export default function SellScrapForm() {
               <Label>Weight</Label>
               <div className="flex gap-2">
                 <input data-testid="weight-input" type="number" min="0.01" step="0.01" required value={form.weight} onChange={set("weight")} placeholder="0.00" className={`${inputCls} font-mono font-bold`} />
-                <div className="flex rounded-xl border border-slate-200 p-1">
+                <div className="flex shrink-0 rounded-xl border border-slate-200 p-1">
                   {["Kg", "Tons"].map((u) => (
                     <button type="button" key={u} data-testid={`unit-${u.toLowerCase()}-btn`} onClick={() => setForm({ ...form, unit: u })}
                       className={`rounded-lg px-3 text-sm font-semibold transition-colors ${form.unit === u ? "bg-slate-950 text-white" : "text-slate-500"}`}>{u}</button>
@@ -96,6 +98,10 @@ export default function SellScrapForm() {
             <div>
               <Label>Preferred Date</Label>
               <input data-testid="preferred-date-input" type="date" value={form.preferred_date} onChange={set("preferred_date")} className={inputCls} />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Scrap Photos</Label>
+              <PhotoPicker value={photos} onChange={setPhotos} />
             </div>
             <div className="sm:col-span-2">
               <Label>Notes (optional)</Label>

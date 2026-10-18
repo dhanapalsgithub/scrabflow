@@ -3,9 +3,12 @@ import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { usePolling } from "@/hooks/usePolling";
-import { inr, kg, fmtDate, TH, TD, TR, btnPrimary, slug } from "@/lib/format";
-import { MetricCard, Panel, PageHeader, StatusBadge, LoadingBlock, EmptyRow, OrderId, ExportButton } from "@/components/reloop/Primitives";
+import { useState } from "react";
+import { inr, kg, fmtDate, btnPrimary, slug } from "@/lib/format";
+import { MetricCard, Panel, PageHeader, StatusBadge, LoadingBlock } from "@/components/reloop/Primitives";
 import { LiveSync } from "@/components/reloop/LiveSync";
+import { DataTable } from "@/components/reloop/DataTable";
+import { PickupTimeline, TrackButton } from "@/components/reloop/PickupTimeline";
 
 const SUBTITLES = {
   public: "Track your scrap pickups and earnings in real time.",
@@ -50,10 +53,20 @@ const RECENT_COLS = [
 
 export default function OverviewView() {
   const { user } = useAuth();
+  const [tracking, setTracking] = useState(null);
   const { data, loading, lastSync, refresh } = usePolling(() => api.get("/scrap/dashboard/summary").then((r) => r.data));
   if (loading && !data) return <LoadingBlock />;
   if (!data) return null;
   const cta = CTA[user.role];
+  const recentCols = [
+    { label: "Order ID", render: (p) => <TrackButton id={p.id} onClick={() => setTracking(p.id)} /> },
+    { label: "Material", key: "material" },
+    { label: "Weight", render: (p) => <span className="font-mono font-bold">{kg(p.weight_kg)}</span> },
+    { label: "Amount", render: (p) => <span className="font-mono font-bold text-slate-900">{inr(p.amount)}</span> },
+    { label: "District", key: "district" },
+    { label: "Status", render: (p) => <StatusBadge status={p.status} /> },
+    { label: "Date", render: (p) => <span className="text-slate-500">{fmtDate(p.created_at)}</span> },
+  ];
 
   return (
     <div className="space-y-8">
@@ -96,28 +109,9 @@ export default function OverviewView() {
         </Panel>
       )}
 
-      <Panel title="Recent Activity" subtitle="Latest pickup requests" bodyClass="p-0" testId="recent-activity-panel"
-        actions={<ExportButton filename="recent-pickups" columns={RECENT_COLS} rows={data.recent} />}>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-slate-200 bg-slate-50/80"><tr>{["Order ID", "Material", "Weight", "Amount", "District", "Status", "Date"].map((h) => <th key={h} className={TH}>{h}</th>)}</tr></thead>
-            <tbody>
-              {data.recent.length === 0 && <EmptyRow cols={7} text="No pickups yet" />}
-              {data.recent.map((p) => (
-                <tr key={p.id} className={TR} data-testid={`recent-row-${p.id}`}>
-                  <td className={TD}><OrderId id={p.id} /></td>
-                  <td className={TD}>{p.material}</td>
-                  <td className={`${TD} font-mono font-bold`}>{kg(p.weight_kg)}</td>
-                  <td className={`${TD} font-mono font-bold text-slate-900`}>{inr(p.amount)}</td>
-                  <td className={TD}>{p.district}</td>
-                  <td className={TD}><StatusBadge status={p.status} /></td>
-                  <td className={`${TD} text-slate-500`}>{fmtDate(p.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+      <DataTable testId="recent-activity-panel" title="Recent Activity" subtitle="Latest pickup requests" columns={recentCols} rows={data.recent}
+        searchKeys={["id", "material", "district", "status"]} exportName="recent-pickups" exportColumns={RECENT_COLS} pageSize={5} emptyText="No pickups yet" />
+      {tracking && <PickupTimeline pickupId={tracking} onClose={() => setTracking(null)} />}
     </div>
   );
 }

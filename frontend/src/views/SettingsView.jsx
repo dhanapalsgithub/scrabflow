@@ -29,6 +29,7 @@ export default function SettingsView() {
         support_email: form.support_email,
         min_pickup_kg: parseFloat(form.min_pickup_kg) || 0,
         service_districts: form.districts.split(","),
+        dispatch_mode: form.dispatch_mode,
       });
       setForm({ ...data, districts: data.service_districts.join(", ") });
       toast.success("Global settings saved");
@@ -63,6 +64,11 @@ export default function SettingsView() {
             <div><Label>Platform Name</Label><input data-testid="platform-name-input" value={form.platform_name} onChange={set("platform_name")} className={inputCls} /></div>
             <div><Label>Support Email</Label><input data-testid="support-email-input" type="email" value={form.support_email} onChange={set("support_email")} className={inputCls} /></div>
             <div><Label>Minimum Pickup Weight (kg)</Label><input data-testid="min-pickup-input" type="number" min="0" value={form.min_pickup_kg} onChange={set("min_pickup_kg")} className={`${inputCls} font-mono`} /></div>
+            <div><Label>Dispatch Mode</Label>
+              <select data-testid="dispatch-mode-select" value={form.dispatch_mode || "open"} onChange={set("dispatch_mode")} className={inputCls}>
+                <option value="open">Open — any verified delivery partner can accept</option>
+                <option value="admin_assign">Admin-assign — only admins assign orders</option>
+              </select></div>
             <div><Label>Service Districts (comma separated)</Label><textarea data-testid="districts-input" rows={3} value={form.districts} onChange={set("districts")} className={`${inputCls} h-auto py-2.5`} /></div>
           </div>
         </Panel>

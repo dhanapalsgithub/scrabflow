@@ -1,4 +1,4 @@
-import { LayoutDashboard, Recycle, History, IndianRupee, User, Truck, ClipboardCheck, Map, Users, ShieldCheck, Settings } from "lucide-react";
+import { LayoutDashboard, Recycle, History, IndianRupee, User, Truck, ClipboardCheck, Map, Users, ShieldCheck, Settings, BadgeCheck, LifeBuoy } from "lucide-react";
 
 const ITEMS = {
   overview: { label: "Overview", icon: LayoutDashboard },
@@ -11,15 +11,18 @@ const ITEMS = {
   areas: { label: "Area Management", icon: Map },
   users: { label: "Users", icon: Users },
   settings: { label: "Global Settings", icon: Settings },
+  verification: { label: "Verification", icon: BadgeCheck },
+  kyc: { label: "Partner Verification", icon: BadgeCheck },
   profile: { label: "Profile", icon: User },
+  help: { label: "Help & Guide", icon: LifeBuoy },
 };
 
 export const ROLE_MENUS = {
-  public: ["overview", "sell", "my-pickups", "rates", "profile"],
-  corporate: ["overview", "sell", "my-pickups", "compliance", "rates", "profile"],
-  delivery_partner: ["overview", "pickups", "assigned", "areas", "rates", "profile"],
-  partner: ["overview", "areas", "pickups", "rates", "profile"],
-  admin: ["overview", "users", "pickups", "areas", "compliance", "settings", "profile"],
+  public: ["overview", "sell", "my-pickups", "rates", "profile", "help"],
+  corporate: ["overview", "sell", "my-pickups", "compliance", "rates", "profile", "help"],
+  delivery_partner: ["overview", "verification", "pickups", "assigned", "areas", "rates", "profile", "help"],
+  partner: ["overview", "areas", "pickups", "rates", "profile", "help"],
+  admin: ["overview", "users", "kyc", "pickups", "areas", "compliance", "settings", "profile", "help"],
 };
 
 export const ROLE_LABELS = {

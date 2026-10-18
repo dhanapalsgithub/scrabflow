@@ -16,6 +16,9 @@ import ComplianceView from "@/views/ComplianceView";
 import SettingsView from "@/views/SettingsView";
 import RatesView from "@/views/RatesView";
 import ProfileView from "@/views/ProfileView";
+import VerificationView from "@/views/VerificationView";
+import KycReviewView from "@/views/KycReviewView";
+import HelpView from "@/views/HelpView";
 
 const VIEWS = {
   overview: OverviewView,
@@ -29,6 +32,9 @@ const VIEWS = {
   settings: SettingsView,
   rates: RatesView,
   profile: ProfileView,
+  verification: VerificationView,
+  kyc: KycReviewView,
+  help: HelpView,
 };
 
 export default function DashboardPage() {

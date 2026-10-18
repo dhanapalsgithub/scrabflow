@@ -11,6 +11,10 @@ const STATUS_STYLES = {
   Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Maintenance: "bg-amber-50 text-amber-700 border-amber-200",
   Inactive: "bg-slate-100 text-slate-600 border-slate-200",
+  Verified: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Under Review": "bg-blue-50 text-blue-700 border-blue-200",
+  Rejected: "bg-rose-50 text-rose-700 border-rose-200",
+  "Not Submitted": "bg-slate-100 text-slate-600 border-slate-200",
 };
 
 export const StatusBadge = ({ status, testId }) => (
@@ -54,9 +58,9 @@ export const Panel = ({ title, subtitle, actions, children, className = "", body
 );
 
 export const PageHeader = ({ title, subtitle, children }) => (
-  <div className="rise mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+  <div className="rise mb-6 flex flex-col gap-4 md:mb-8 lg:flex-row lg:items-end lg:justify-between">
     <div>
-      <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl" data-testid="page-title">{title}</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl lg:text-4xl" data-testid="page-title">{title}</h1>
       {subtitle && <p className="mt-2 max-w-2xl text-sm text-slate-500 md:text-base">{subtitle}</p>}
     </div>
     {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}

@@ -5,8 +5,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { usePolling } from "@/hooks/usePolling";
-import { kg, TH, TD, TR, inputCls, btnPrimary, btnGhost, slug } from "@/lib/format";
-import { Panel, PageHeader, StatusBadge, LoadingBlock, EmptyRow, OrderId, ExportButton, MetricCard } from "@/components/reloop/Primitives";
+import { kg, inputCls, btnPrimary, btnGhost, slug } from "@/lib/format";
+import { PageHeader, StatusBadge, LoadingBlock, OrderId, MetricCard } from "@/components/reloop/Primitives";
+import { DataTable } from "@/components/reloop/DataTable";
 import { LiveSync } from "@/components/reloop/LiveSync";
 
 const EMPTY = { zone_id: "", city: "Chennai", assigned_hub: "", households: 0, daily_volume_kg: 0, status: "Active" };
@@ -84,46 +85,33 @@ export default function AreaManagementView() {
     { key: "volume", label: "Total Volume (Kg)", value: m.total_volume_kg, format: "kg", hint: "Excluding cancelled" },
     { key: "hub", label: "Hub Status", value: m.hub_status, format: "text", hint: "Live network health" },
   ];
+  const columns = [
+    { label: "Zone ID", render: (z) => <OrderId id={z.zone_id} /> },
+    { label: "City/District", key: "city", className: "font-medium" },
+    { label: "Assigned Hub", key: "assigned_hub" },
+    { label: "Households", render: (z) => <span className="font-mono font-bold">{Number(z.households).toLocaleString("en-IN")}</span> },
+    { label: "Daily Volume", render: (z) => <span className="font-mono font-bold">{kg(z.daily_volume_kg)}</span> },
+    { label: "Pickups", render: (z) => <span className="font-mono">{z.pickups_mapped}</span> },
+    { label: "Status", render: (z) => <StatusBadge status={z.status} /> },
+  ];
+  if (canEdit) columns.push({ label: "Actions", render: (z) => (
+    <div className="flex gap-1.5">
+      <button type="button" className={`${btnGhost} h-8 px-2.5`} onClick={() => setEditing(z)} data-testid={`edit-zone-${slug(z.zone_id)}`}><Pencil className="h-3.5 w-3.5" /></button>
+      <button type="button" className={`${btnGhost} h-8 px-2.5 text-rose-600`} onClick={() => remove(z)} data-testid={`delete-zone-${slug(z.zone_id)}`}><Trash2 className="h-3.5 w-3.5" /></button>
+    </div>) });
 
   return (
     <div className="space-y-6">
       <PageHeader title="Partner Hub & Area Management" subtitle="Zones, hubs and route coverage across Tamil Nadu.">
         <LiveSync lastSync={lastSync} onRefresh={refresh} />
-        <ExportButton filename="area-routes" columns={COLS} rows={zones} />
         {canEdit && <button type="button" className={btnPrimary} onClick={() => setEditing({})} data-testid="add-zone-btn"><Plus className="h-4 w-4" /> Add Zone</button>}
       </PageHeader>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c, i) => <MetricCard key={c.key} {...c} index={i} testId={`area-metric-${c.key}`} />)}
       </div>
-      <Panel title="Area & Routes" subtitle="Zone-level hub assignments" bodyClass="p-0" testId="zones-table">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-slate-200 bg-slate-50/80"><tr>{["Zone ID", "City/District", "Assigned Hub", "Households", "Daily Volume", "Pickups", "Status", canEdit ? "Actions" : null].filter(Boolean).map((h) => <th key={h} className={TH}>{h}</th>)}</tr></thead>
-            <tbody>
-              {zones.length === 0 && <EmptyRow cols={8} text="No zones configured" />}
-              {zones.map((z) => (
-                <tr key={z.zone_id} className={TR} data-testid={`zone-row-${slug(z.zone_id)}`}>
-                  <td className={TD}><OrderId id={z.zone_id} /></td>
-                  <td className={`${TD} font-medium`}>{z.city}</td>
-                  <td className={TD}>{z.assigned_hub}</td>
-                  <td className={`${TD} font-mono font-bold`}>{Number(z.households).toLocaleString("en-IN")}</td>
-                  <td className={`${TD} font-mono font-bold`}>{kg(z.daily_volume_kg)}</td>
-                  <td className={`${TD} font-mono`}>{z.pickups_mapped}</td>
-                  <td className={TD}><StatusBadge status={z.status} /></td>
-                  {canEdit && (
-                    <td className={TD}>
-                      <div className="flex gap-1.5">
-                        <button type="button" className={`${btnGhost} h-8 px-2.5`} onClick={() => setEditing(z)} data-testid={`edit-zone-${slug(z.zone_id)}`}><Pencil className="h-3.5 w-3.5" /></button>
-                        <button type="button" className={`${btnGhost} h-8 px-2.5 text-rose-600`} onClick={() => remove(z)} data-testid={`delete-zone-${slug(z.zone_id)}`}><Trash2 className="h-3.5 w-3.5" /></button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+      <DataTable testId="zones-table" title="Area & Routes" subtitle="Zone-level hub assignments" rowKey="zone_id" columns={columns}
+        rows={zones.map((z) => ({ ...z, key: slug(z.zone_id) }))} searchKeys={["zone_id", "city", "assigned_hub", "status"]}
+        exportName="area-routes" exportColumns={COLS} emptyText="No zones configured" />
       {editing && <ZoneDialog zone={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
     </div>
   );

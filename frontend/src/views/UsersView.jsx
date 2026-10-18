@@ -1,24 +1,30 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Search } from "lucide-react";
+import { useEffect } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { usePolling } from "@/hooks/usePolling";
 import { ROLE_LABELS } from "@/lib/menu";
-import { inr, fmtDate, TH, TD, TR, inputCls, selectSm, btnPrimary, btnGhost } from "@/lib/format";
-import { Panel, PageHeader, LoadingBlock, EmptyRow, ExportButton, MetricCard } from "@/components/reloop/Primitives";
+import { inr, fmtDate, inputCls, selectSm, btnPrimary, btnGhost } from "@/lib/format";
+import { PageHeader, LoadingBlock, MetricCard } from "@/components/reloop/Primitives";
+import { DataTable } from "@/components/reloop/DataTable";
 
 const COLS = [
   { label: "Name", key: "name" }, { label: "Email", key: "email" }, { label: "Role", key: "role" }, { label: "Organization", key: "organization" },
-  { label: "District", key: "district" }, { label: "Orders", key: "orders" }, { label: "Order Value (INR)", key: "order_value" },
+  { label: "District", key: "district" }, { label: "Admin Scope", key: "admin_scope" }, { label: "Orders", key: "orders" }, { label: "Order Value (INR)", key: "order_value" },
   { label: "Active", key: "active" }, { label: "Last Login", key: "last_login" }, { label: "Created", key: "created_at" },
 ];
-const EMPTY = { name: "", email: "", password: "", role: "public", organization: "", phone: "", district: "" };
+const EMPTY = { name: "", email: "", password: "", role: "public", organization: "", phone: "", district: "", admin_scope: "All" };
 
-const AddUserDialog = ({ onClose, onSaved }) => {
+const AddUserDialog = ({ onClose, onSaved, headAdmin }) => {
   const [form, setForm] = useState(EMPTY);
+  const [districts, setDistricts] = useState([]);
+  useEffect(() => {
+    api.get("/settings").then((r) => setDistricts(r.data.service_districts));
+  }, []);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const save = async (e) => {
     e.preventDefault();
@@ -39,8 +45,14 @@ const AddUserDialog = ({ onClose, onSaved }) => {
           <input data-testid="new-user-email" required type="email" placeholder="Email" value={form.email} onChange={set("email")} className={inputCls} />
           <input data-testid="new-user-password" required minLength={6} type="password" placeholder="Password (min 6)" value={form.password} onChange={set("password")} className={inputCls} />
           <select data-testid="new-user-role" value={form.role} onChange={set("role")} className={inputCls}>
-            {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {Object.entries(ROLE_LABELS).filter(([v]) => headAdmin || v !== "admin").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
+          {form.role === "admin" && (
+            <select data-testid="new-user-admin-scope" value={form.admin_scope} onChange={set("admin_scope")} className={`${inputCls} sm:col-span-2`}>
+              <option value="All">Head admin — all districts</option>
+              {districts.map((d) => <option key={d} value={d}>District admin — {d}</option>)}
+            </select>
+          )}
           <input data-testid="new-user-org" placeholder="Organization" value={form.organization} onChange={set("organization")} className={inputCls} />
           <input data-testid="new-user-district" placeholder="District" value={form.district} onChange={set("district")} className={inputCls} />
           <button data-testid="new-user-save-btn" type="submit" className={`${btnPrimary} sm:col-span-2`}>Create User</button>
@@ -53,8 +65,8 @@ const AddUserDialog = ({ onClose, onSaved }) => {
 export default function UsersView() {
   const { user: me } = useAuth();
   const [adding, setAdding] = useState(false);
-  const [q, setQ] = useState("");
   const [role, setRole] = useState("all");
+  const headAdmin = (me.admin_scope || "All") === "All";
   const { data, loading, refresh } = usePolling(() => api.get("/admin/users").then((r) => r.data));
 
   const patch = async (u, body) => {
@@ -78,14 +90,25 @@ export default function UsersView() {
   };
 
   if (loading && !data) return <LoadingBlock />;
-  const needle = q.trim().toLowerCase();
-  const rows = data.filter((u) => (role === "all" || u.role === role) && (!needle || `${u.name} ${u.email} ${u.organization}`.toLowerCase().includes(needle)));
+  const rows = data.filter((u) => role === "all" || u.role === role);
   const count = (r) => data.filter((u) => u.role === r).length;
+  const columns = [
+    { label: "User", render: (u) => <div><p className="font-semibold text-slate-900">{u.name}</p><p className="text-xs text-slate-500">{u.email}</p></div> },
+    { label: "Role", render: (u) => (
+      <select data-testid={`user-role-select-${u.email}`} disabled={u.email === me.email || (!headAdmin && u.role === "admin")} value={u.role} onChange={(e) => patch(u, { role: e.target.value })} className={selectSm}>
+        {Object.entries(ROLE_LABELS).filter(([v]) => headAdmin || v !== "admin" || u.role === "admin").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>) },
+    { label: "District / Scope", render: (u) => <span className="text-sm">{u.role === "admin" ? `Admin: ${u.admin_scope || "All"}` : u.district || "—"}</span> },
+    { label: "Orders", render: (u) => <span className="font-mono font-bold">{u.orders}</span> },
+    { label: "Order Value", render: (u) => <span className="font-mono font-bold">{inr(u.order_value)}</span> },
+    { label: "Last Login", render: (u) => <span className="text-slate-500">{fmtDate(u.last_login)}</span> },
+    { label: "Active", render: (u) => <Switch data-testid={`user-active-toggle-${u.email}`} disabled={u.email === me.email} checked={u.active !== false} onCheckedChange={(v) => patch(u, { active: v })} /> },
+    { label: "Delete", render: (u) => u.email !== me.email && <button type="button" className={`${btnGhost} h-8 px-2.5 text-rose-600`} onClick={() => remove(u)} data-testid={`delete-user-${u.email}`}><Trash2 className="h-3.5 w-3.5" /></button> },
+  ];
 
   return (
     <div className="space-y-6">
       <PageHeader title="Users" subtitle="Manage accounts, roles and access across ReLoop.">
-        <ExportButton filename="users" columns={COLS} rows={rows} />
         <button type="button" className={btnPrimary} onClick={() => setAdding(true)} data-testid="add-user-btn"><Plus className="h-4 w-4" /> Add User</button>
       </PageHeader>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -94,44 +117,15 @@ export default function UsersView() {
         <MetricCard label="Partners" value={count("partner") + count("delivery_partner")} format="number" hint="Hub + Delivery" index={2} testId="users-metric-partners" />
         <MetricCard label="Active Accounts" value={data.filter((u) => u.active !== false).length} format="number" index={3} testId="users-metric-active" />
       </div>
-      <Panel bodyClass="p-0" testId="users-table" title={`${rows.length} users`}
-        actions={<>
-          <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input data-testid="users-search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search users" className={`${inputCls} h-10 w-56 pl-9`} /></div>
+      <DataTable testId="users-table" title={`${rows.length} users`} columns={columns} rows={rows} rowKey="email"
+        searchKeys={["name", "email", "organization", "district"]} exportName="users" exportColumns={COLS}
+        filters={
           <select data-testid="users-role-filter" value={role} onChange={(e) => setRole(e.target.value)} className={`${selectSm} h-10`}>
             <option value="all">All roles</option>
             {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-        </>}>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-slate-200 bg-slate-50/80"><tr>{["User", "Role", "Organization", "Orders", "Order Value", "Last Login", "Active", ""].map((h, i) => <th key={i} className={TH}>{h}</th>)}</tr></thead>
-            <tbody>
-              {rows.length === 0 && <EmptyRow cols={8} />}
-              {rows.map((u) => {
-                const self = u.email === me.email;
-                return (
-                  <tr key={u.id} className={TR} data-testid={`user-row-${u.email}`}>
-                    <td className={TD}><p className="font-semibold text-slate-900">{u.name}</p><p className="text-xs text-slate-500">{u.email}</p></td>
-                    <td className={TD}>
-                      <select data-testid={`user-role-select-${u.email}`} disabled={self} value={u.role} onChange={(e) => patch(u, { role: e.target.value })} className={selectSm}>
-                        {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </td>
-                    <td className={TD}>{u.organization || "—"}</td>
-                    <td className={`${TD} font-mono font-bold`}>{u.orders}</td>
-                    <td className={`${TD} font-mono font-bold`}>{inr(u.order_value)}</td>
-                    <td className={`${TD} text-slate-500`}>{fmtDate(u.last_login)}</td>
-                    <td className={TD}><Switch data-testid={`user-active-toggle-${u.email}`} disabled={self} checked={u.active !== false} onCheckedChange={(v) => patch(u, { active: v })} /></td>
-                    <td className={TD}>{!self && <button type="button" className={`${btnGhost} h-8 px-2.5 text-rose-600`} onClick={() => remove(u)} data-testid={`delete-user-${u.email}`}><Trash2 className="h-3.5 w-3.5" /></button>}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-      {adding && <AddUserDialog onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh(); }} />}
+        } />
+      {adding && <AddUserDialog headAdmin={headAdmin} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh(); }} />}
     </div>
   );
 }
