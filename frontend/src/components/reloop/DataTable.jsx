@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, ChevronLeft, ChevronRight, CalendarDays, X } from "lucide-react";
-import { TH, TD, TR, inputCls, selectSm } from "@/lib/format";
+import { Search, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { TH, TD, TR, inputCls } from "@/lib/format";
+import { Input } from "@/components/ui/input";
 import { Panel, ExportButton } from "@/components/reloop/Primitives";
+import { UiSelect, DatePicker, toDate } from "@/components/reloop/Fields";
 
 const MQ = "(max-width: 767px)";
 function useIsMobile() {
@@ -34,18 +36,12 @@ const Toolbar = ({ q, setQ, from, setFrom, to, setTo, dateKey, filters, testId }
   <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 lg:flex-row lg:flex-wrap lg:items-center">
     <div className="relative w-full lg:w-72">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      <input data-testid={`${testId}-search`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search records" className={`${inputCls} h-10 pl-9`} />
+      <Input data-testid={`${testId}-search`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search records" className={`${inputCls} h-10 pl-9`} />
     </div>
     {dateKey && (
       <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-        <label className="relative flex items-center">
-          <CalendarDays className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
-          <input type="date" data-testid={`${testId}-from-date`} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={`${inputCls} h-10 pl-9 text-xs`} aria-label="From date" />
-        </label>
-        <label className="relative flex items-center">
-          <CalendarDays className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
-          <input type="date" data-testid={`${testId}-to-date`} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={`${inputCls} h-10 pl-9 text-xs`} aria-label="To date" />
-        </label>
+        <DatePicker testId={`${testId}-from-date`} value={from} onChange={setFrom} placeholder="From date" toDate={toDate(to)} className="sm:w-40" />
+        <DatePicker testId={`${testId}-to-date`} value={to} onChange={setTo} placeholder="To date" fromDate={toDate(from)} className="sm:w-40" />
       </div>
     )}
     {filters && <div className="flex flex-wrap gap-2">{filters}</div>}
@@ -62,9 +58,8 @@ const Pager = ({ page, pages, size, setSize, setPage, total, testId }) => (
   <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:px-6">
     <div className="flex items-center gap-2">
       <span data-testid={`${testId}-total`}>{total} records</span>
-      <select data-testid={`${testId}-page-size`} value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }} className={selectSm}>
-        {[5, 10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
-      </select>
+      <UiSelect testId={`${testId}-page-size`} value={String(size)} onChange={(v) => { setSize(Number(v)); setPage(1); }} className="h-8 w-[110px] text-xs"
+        options={[5, 10, 25, 50].map((n) => ({ value: String(n), label: `${n} / page` }))} />
     </div>
     <div className="flex items-center gap-1">
       <button type="button" data-testid={`${testId}-prev-page`} disabled={page <= 1} onClick={() => setPage(page - 1)} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>

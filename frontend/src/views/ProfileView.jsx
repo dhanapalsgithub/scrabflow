@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE_LABELS } from "@/lib/menu";
@@ -24,8 +25,8 @@ const PasswordForm = () => {
   };
   return (
     <form onSubmit={save} className="space-y-4" data-testid="password-form">
-      <Field label="Current Password"><input data-testid="current-password-input" type="password" required value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} className={inputCls} /></Field>
-      <Field label="New Password"><input data-testid="new-password-input" type="password" required minLength={6} value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} className={inputCls} /></Field>
+      <Field label="Current Password"><Input data-testid="current-password-input" type="password" required value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} className={inputCls} /></Field>
+      <Field label="New Password"><Input data-testid="new-password-input" type="password" required minLength={6} value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} className={inputCls} /></Field>
       <button type="submit" className={btnPrimary} data-testid="change-password-btn">Update Password</button>
     </form>
   );
@@ -53,11 +54,11 @@ export default function ProfileView() {
       <div className="grid gap-6 lg:grid-cols-3">
         <Panel title="Account Details" className="lg:col-span-2">
           <form onSubmit={save} className="grid gap-4 sm:grid-cols-2" data-testid="profile-form">
-            <Field label="Full Name"><input data-testid="profile-name-input" required value={form.name} onChange={set("name")} className={inputCls} /></Field>
-            <Field label="Phone"><input data-testid="profile-phone-input" value={form.phone} onChange={set("phone")} className={inputCls} /></Field>
-            <Field label="Organization"><input data-testid="profile-org-input" value={form.organization} onChange={set("organization")} className={inputCls} /></Field>
-            <Field label="District"><input data-testid="profile-district-input" value={form.district} onChange={set("district")} className={inputCls} /></Field>
-            <div className="sm:col-span-2"><Field label="Default Pickup Address"><input data-testid="profile-address-input" value={form.address} onChange={set("address")} className={inputCls} /></Field></div>
+            <Field label="Full Name"><Input data-testid="profile-name-input" required value={form.name} onChange={set("name")} className={inputCls} /></Field>
+            <Field label="Phone"><Input data-testid="profile-phone-input" value={form.phone} onChange={set("phone")} className={inputCls} /></Field>
+            <Field label="Organization"><Input data-testid="profile-org-input" value={form.organization} onChange={set("organization")} className={inputCls} /></Field>
+            <Field label="District"><Input data-testid="profile-district-input" value={form.district} onChange={set("district")} className={inputCls} /></Field>
+            <div className="sm:col-span-2"><Field label="Default Pickup Address"><Input data-testid="profile-address-input" value={form.address} onChange={set("address")} className={inputCls} /></Field></div>
             <div className="sm:col-span-2"><button type="submit" className={btnPrimary} data-testid="save-profile-btn">Save Profile</button></div>
           </form>
         </Panel>

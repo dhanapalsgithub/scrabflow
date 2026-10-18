@@ -14,6 +14,7 @@ const STEPS = [
 ];
 
 const lastEntry = (history, status) => [...(history || [])].reverse().find((h) => h.status === status);
+const FINAL = ["Completed", "Cancelled"];
 
 const Stepper = ({ p }) => {
   const idx = STEPS.findIndex((s) => s.status === p.status);
@@ -64,11 +65,19 @@ const Body = ({ p }) => (
     <Stepper p={p} />
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 p-4 text-sm">
-        <div className="flex justify-between"><span className="text-slate-500">Material</span><span className="font-semibold">{p.material}</span></div>
-        <div className="mt-1 flex justify-between"><span className="text-slate-500">Weight</span><span className="font-mono font-bold">{kg(p.weight_kg)}</span></div>
-        <div className="mt-1 flex justify-between"><span className="text-slate-500">Amount</span><span className="font-mono font-bold text-emerald-700">{inr(p.amount)}</span></div>
+        {(p.items || [{ material: p.material, weight_kg: p.weight_kg, amount: p.amount }]).map((it) => (
+          <div key={it.material} className="flex justify-between gap-2" data-testid={`timeline-item-${slug(it.material)}`}><span className="text-slate-600">{it.material}</span><span className="font-mono font-bold">{kg(it.weight_kg)} · {inr(it.amount)}</span></div>
+        ))}
+        <div className="mt-2 flex justify-between border-t border-slate-100 pt-2"><span className="text-slate-500">Total</span><span className="font-mono font-bold text-emerald-700">{kg(p.weight_kg)} · {inr(p.amount)}</span></div>
+        {p.service_fee > 0 && <div className="mt-1 flex justify-between"><span className="text-slate-500">Service fee ({p.payment_method === "online" ? "Online" : "Cash"})</span><span className="font-mono font-bold">{inr(p.service_fee)} · {p.payment_status === "paid" ? "Paid" : "Due"}</span></div>}
         <p className="mt-3 text-xs text-slate-500">{p.district} · {p.address}</p>
       </div>
+      {p.otp && !FINAL.includes(p.status) && (
+        <div className="rounded-xl bg-slate-950 p-4 text-white" data-testid="timeline-otp">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Pickup OTP — share only with the partner at pickup</p>
+          <p className="mt-1 font-mono text-3xl font-extrabold tracking-[0.4em] text-emerald-400">{p.otp}</p>
+        </div>
+      )}
       {p.assigned_to && <PartnerCard p={p} />}
       {p.photos?.length > 0 && (
         <div><p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Scrap Photos</p>

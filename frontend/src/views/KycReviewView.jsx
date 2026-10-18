@@ -4,7 +4,9 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, formatApiError } from "@/lib/api";
 import { usePolling } from "@/hooks/usePolling";
-import { fmtDate, inputCls, btnPrimary, selectSm } from "@/lib/format";
+import { fmtDate, inputCls, btnPrimary } from "@/lib/format";
+import { Input } from "@/components/ui/input";
+import { UiSelect } from "@/components/reloop/Fields";
 import { PageHeader, LoadingBlock, MetricCard, StatusBadge } from "@/components/reloop/Primitives";
 import { DataTable } from "@/components/reloop/DataTable";
 import { AuthImage } from "@/components/reloop/Files";
@@ -39,7 +41,7 @@ const ReviewDialog = ({ partner, onClose, onDone }) => {
               <AuthImage file={{ id: k[key] }} className="aspect-square w-full" testId={`kyc-doc-${key}`} /></div>
           ))}
         </div>
-        <input data-testid="kyc-reject-reason-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (required for rejection)" className={inputCls} />
+        <Input data-testid="kyc-reject-reason-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (required for rejection)" className={inputCls} />
         <div className="grid grid-cols-2 gap-3">
           <button type="button" data-testid="kyc-reject-btn" onClick={() => act("reject")} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 text-sm font-semibold text-rose-600 hover:bg-rose-50"><XCircle className="h-4 w-4" /> Reject</button>
           <button type="button" data-testid="kyc-approve-btn" onClick={() => act("approve")} className={`${btnPrimary} h-11`}><CheckCircle2 className="h-4 w-4" /> Approve</button>
@@ -84,8 +86,8 @@ export default function KycReviewView() {
       </div>
       <DataTable testId="kyc-table" title={`${rows.length} delivery partners`} columns={columns} rows={rows} dateKey="submitted_at"
         searchKeys={["name", "email", "district", "vehicle"]} exportName="partner-verification" exportColumns={EXPORT}
-        filters={<select data-testid="kyc-status-filter" value={status} onChange={(e) => setStatus(e.target.value)} className={`${selectSm} h-10`}>
-          <option value="all">All statuses</option>{Object.entries(KYC_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>} />
+        filters={<UiSelect testId="kyc-status-filter" value={status} onChange={setStatus} className="w-[160px]"
+          options={[{ value: "all", label: "All statuses" }, ...Object.entries(KYC_LABELS).map(([value, label]) => ({ value, label }))]} />} />
       {reviewing && <ReviewDialog partner={reviewing} onClose={() => setReviewing(null)} onDone={() => { setReviewing(null); refresh(); }} />}
     </div>
   );

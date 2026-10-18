@@ -7,6 +7,16 @@ import { PageHeader, StatusBadge, LoadingBlock } from "@/components/reloop/Primi
 import { LiveSync } from "@/components/reloop/LiveSync";
 import { DataTable } from "@/components/reloop/DataTable";
 import { PickupTimeline, TrackButton } from "@/components/reloop/PickupTimeline";
+import { payOnline } from "@/lib/razorpay";
+
+const PayCell = ({ p, onPaid }) => {
+  if (p.payment_status === "paid") return <span className="text-xs font-semibold text-emerald-700" data-testid={`payment-status-${p.id}`}>Fee paid</span>;
+  if (p.payment_status !== "pending" || p.status === "Cancelled") return <span className="text-xs text-slate-400">No fee</span>;
+  if (p.payment_method === "online") return (
+    <button type="button" data-testid={`pay-now-${p.id}`} onClick={() => payOnline(p.id, onPaid)} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600">Pay {inr(p.service_fee)}</button>
+  );
+  return <span className="text-xs text-amber-700" data-testid={`payment-status-${p.id}`}>{inr(p.service_fee)} cash at pickup</span>;
+};
 
 export const PICKUP_COLUMNS = [
   { label: "Order ID", key: "id" }, { label: "Material", key: "material" }, { label: "Weight (kg)", key: "weight_kg" },
@@ -16,6 +26,7 @@ export const PICKUP_COLUMNS = [
 ];
 
 export default function UserPickupsList() {
+  const FINAL_OTP = ["Completed", "Cancelled"];
   const [filter, setFilter] = useState("All");
   const [tracking, setTracking] = useState(null);
   const { data, loading, refresh, lastSync } = usePolling(() => api.get("/scrap/pickups/all").then((r) => r.data));
@@ -39,6 +50,8 @@ export default function UserPickupsList() {
     { label: "Earnings", render: (p) => <span className="font-mono font-bold text-slate-900">{inr(p.amount)}</span> },
     { label: "District & Address", wide: true, render: (p) => <><p className="font-medium">{p.district}</p><p className="max-w-[240px] truncate text-xs text-slate-500">{p.address}</p></> },
     { label: "Status", render: (p) => <StatusBadge status={p.status} testId={`user-pickup-status-${p.id}`} /> },
+    { label: "Pickup OTP", render: (p) => FINAL_OTP.includes(p.status) ? <span className="text-xs text-slate-400">—</span> : <span className="rounded-md bg-slate-950 px-2 py-1 font-mono text-sm font-bold tracking-[0.3em] text-emerald-400" data-testid={`pickup-otp-${p.id}`}>{p.otp}</span> },
+    { label: "Payment", render: (p) => <PayCell p={p} onPaid={refresh} /> },
     { label: "Partner", render: (p) => p.assigned_name ? <><p className="text-sm">{p.assigned_name}</p><p className="font-mono text-xs text-slate-500">{p.assigned_vehicle}</p></> : <span className="text-xs text-slate-400">Not assigned</span> },
     { label: "Date", render: (p) => <span className="text-slate-500">{fmtDate(p.created_at)}</span> },
     { label: "Action", render: (p) => p.status === "Pending" ? (

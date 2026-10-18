@@ -6,6 +6,8 @@ import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { usePolling } from "@/hooks/usePolling";
 import { kg, inputCls, btnPrimary, btnGhost, slug } from "@/lib/format";
+import { Input } from "@/components/ui/input";
+import { UiSelect } from "@/components/reloop/Fields";
 import { PageHeader, StatusBadge, LoadingBlock, OrderId, MetricCard } from "@/components/reloop/Primitives";
 import { DataTable } from "@/components/reloop/DataTable";
 import { LiveSync } from "@/components/reloop/LiveSync";
@@ -16,8 +18,8 @@ const COLS = [
   { label: "Households", key: "households" }, { label: "Daily Volume (kg)", key: "daily_volume_kg" }, { label: "Pickups Mapped", key: "pickups_mapped" }, { label: "Status", key: "status" },
 ];
 
-const ZoneDialog = ({ zone, onClose, onSaved }) => {
-  const [form, setForm] = useState(zone?.zone_id ? zone : EMPTY);
+const ZoneDialog = ({ zone, onClose, onSaved, scope }) => {
+  const [form, setForm] = useState(zone?.zone_id ? zone : { ...EMPTY, city: scope || EMPTY.city });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const save = async (e) => {
@@ -37,7 +39,7 @@ const ZoneDialog = ({ zone, onClose, onSaved }) => {
   };
   const field = (k, label, type = "text") => (
     <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</label>
-      <input data-testid={`zone-${slug(k)}-input`} required type={type} value={form[k]} onChange={set(k)} className={inputCls} /></div>
+      <Input data-testid={`zone-${slug(k)}-input`} required type={type} value={form[k]} onChange={set(k)} disabled={k === "city" && !!scope} className={inputCls} /></div>
   );
   return (
     <Dialog open onOpenChange={onClose}>
@@ -50,9 +52,7 @@ const ZoneDialog = ({ zone, onClose, onSaved }) => {
           {field("households", "Households", "number")}
           {field("daily_volume_kg", "Daily Volume (kg)", "number")}
           <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Status</label>
-            <select data-testid="zone-status-select" value={form.status} onChange={set("status")} className={inputCls}>
-              {["Active", "Maintenance", "Inactive"].map((s) => <option key={s}>{s}</option>)}
-            </select></div>
+            <UiSelect testId="zone-status-select" value={form.status} onChange={(v) => setForm({ ...form, status: v })} options={["Active", "Maintenance", "Inactive"]} /></div>
           <button data-testid="zone-save-btn" type="submit" disabled={busy} className={`${btnPrimary} sm:col-span-2`}>Save Zone</button>
         </form>
       </DialogContent>
@@ -112,7 +112,7 @@ export default function AreaManagementView() {
       <DataTable testId="zones-table" title="Area & Routes" subtitle="Zone-level hub assignments" rowKey="zone_id" columns={columns}
         rows={zones.map((z) => ({ ...z, key: slug(z.zone_id) }))} searchKeys={["zone_id", "city", "assigned_hub", "status"]}
         exportName="area-routes" exportColumns={COLS} emptyText="No zones configured" />
-      {editing && <ZoneDialog zone={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
+      {editing && <ZoneDialog zone={editing} scope={user.role === "admin" && (user.admin_scope || "All") !== "All" ? user.admin_scope : null} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
     </div>
   );
 }

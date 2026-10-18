@@ -7,6 +7,7 @@ DEFAULT_SETTINGS = {
     "min_pickup_kg": 5,
     "service_districts": DISTRICTS,
     "dispatch_mode": "open",
+    "service_fee": 25,
 }
 
 SEED_USERS = [

@@ -8,7 +8,9 @@ import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { usePolling } from "@/hooks/usePolling";
 import { ROLE_LABELS } from "@/lib/menu";
-import { inr, fmtDate, inputCls, selectSm, btnPrimary, btnGhost } from "@/lib/format";
+import { inr, fmtDate, inputCls, btnPrimary, btnGhost } from "@/lib/format";
+import { Input } from "@/components/ui/input";
+import { UiSelect } from "@/components/reloop/Fields";
 import { PageHeader, LoadingBlock, MetricCard } from "@/components/reloop/Primitives";
 import { DataTable } from "@/components/reloop/DataTable";
 
@@ -41,20 +43,17 @@ const AddUserDialog = ({ onClose, onSaved, headAdmin }) => {
       <DialogContent className="rounded-2xl sm:max-w-lg" data-testid="add-user-dialog">
         <DialogHeader><DialogTitle>Add User</DialogTitle></DialogHeader>
         <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
-          <input data-testid="new-user-name" required placeholder="Full name" value={form.name} onChange={set("name")} className={inputCls} />
-          <input data-testid="new-user-email" required type="email" placeholder="Email" value={form.email} onChange={set("email")} className={inputCls} />
-          <input data-testid="new-user-password" required minLength={6} type="password" placeholder="Password (min 6)" value={form.password} onChange={set("password")} className={inputCls} />
-          <select data-testid="new-user-role" value={form.role} onChange={set("role")} className={inputCls}>
-            {Object.entries(ROLE_LABELS).filter(([v]) => headAdmin || v !== "admin").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          <Input data-testid="new-user-name" required placeholder="Full name" value={form.name} onChange={set("name")} className={inputCls} />
+          <Input data-testid="new-user-email" required type="email" placeholder="Email" value={form.email} onChange={set("email")} className={inputCls} />
+          <Input data-testid="new-user-password" required minLength={6} type="password" placeholder="Password (min 6)" value={form.password} onChange={set("password")} className={inputCls} />
+          <UiSelect testId="new-user-role" value={form.role} onChange={(v) => setForm({ ...form, role: v })}
+            options={Object.entries(ROLE_LABELS).filter(([v]) => headAdmin || v !== "admin").map(([value, label]) => ({ value, label }))} />
           {form.role === "admin" && (
-            <select data-testid="new-user-admin-scope" value={form.admin_scope} onChange={set("admin_scope")} className={`${inputCls} sm:col-span-2`}>
-              <option value="All">Head admin — all districts</option>
-              {districts.map((d) => <option key={d} value={d}>District admin — {d}</option>)}
-            </select>
+            <UiSelect testId="new-user-admin-scope" value={form.admin_scope} onChange={(v) => setForm({ ...form, admin_scope: v })} className="sm:col-span-2"
+              options={[{ value: "All", label: "Head admin — all districts" }, ...districts.map((d) => ({ value: d, label: `District admin — ${d}` }))]} />
           )}
-          <input data-testid="new-user-org" placeholder="Organization" value={form.organization} onChange={set("organization")} className={inputCls} />
-          <input data-testid="new-user-district" placeholder="District" value={form.district} onChange={set("district")} className={inputCls} />
+          <Input data-testid="new-user-org" placeholder="Organization" value={form.organization} onChange={set("organization")} className={inputCls} />
+          <Input data-testid="new-user-district" placeholder="District" value={form.district} onChange={set("district")} className={inputCls} />
           <button data-testid="new-user-save-btn" type="submit" className={`${btnPrimary} sm:col-span-2`}>Create User</button>
         </form>
       </DialogContent>
@@ -67,6 +66,10 @@ export default function UsersView() {
   const [adding, setAdding] = useState(false);
   const [role, setRole] = useState("all");
   const headAdmin = (me.admin_scope || "All") === "All";
+  const [districts, setDistricts] = useState([]);
+  useEffect(() => {
+    api.get("/settings").then((r) => setDistricts(r.data.service_districts));
+  }, []);
   const { data, loading, refresh } = usePolling(() => api.get("/admin/users").then((r) => r.data));
 
   const patch = async (u, body) => {
@@ -95,10 +98,14 @@ export default function UsersView() {
   const columns = [
     { label: "User", render: (u) => <div><p className="font-semibold text-slate-900">{u.name}</p><p className="text-xs text-slate-500">{u.email}</p></div> },
     { label: "Role", render: (u) => (
-      <select data-testid={`user-role-select-${u.email}`} disabled={u.email === me.email || (!headAdmin && u.role === "admin")} value={u.role} onChange={(e) => patch(u, { role: e.target.value })} className={selectSm}>
-        {Object.entries(ROLE_LABELS).filter(([v]) => headAdmin || v !== "admin" || u.role === "admin").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>) },
-    { label: "District / Scope", render: (u) => <span className="text-sm">{u.role === "admin" ? `Admin: ${u.admin_scope || "All"}` : u.district || "—"}</span> },
+      <UiSelect testId={`user-role-select-${u.email}`} disabled={u.email === me.email || (!headAdmin && u.role === "admin")} value={u.role} onChange={(v) => patch(u, { role: v })} className="h-9 w-[160px] text-xs"
+        options={Object.entries(ROLE_LABELS).filter(([v]) => headAdmin || v !== "admin" || u.role === "admin").map(([value, label]) => ({ value, label }))} />) },
+    { label: "District / Scope", render: (u) => u.role === "admin" && headAdmin && u.email !== me.email ? (
+      <UiSelect testId={`user-scope-select-${u.email}`} value={u.admin_scope || "All"} onChange={(v) => patch(u, { admin_scope: v })} className="h-9 w-[170px] text-xs"
+        options={[{ value: "All", label: "Head admin (All)" }, ...districts.map((d) => ({ value: d, label: `District: ${d}` }))]} />
+    ) : headAdmin && u.role !== "admin" ? (
+      <UiSelect testId={`user-district-select-${u.email}`} value={u.district || ""} onChange={(v) => patch(u, { district: v })} placeholder="Set district" className="h-9 w-[150px] text-xs" options={districts} />
+    ) : <span className="text-sm">{u.role === "admin" ? `Admin: ${u.admin_scope || "All"}` : u.district || "—"}</span> },
     { label: "Orders", render: (u) => <span className="font-mono font-bold">{u.orders}</span> },
     { label: "Order Value", render: (u) => <span className="font-mono font-bold">{inr(u.order_value)}</span> },
     { label: "Last Login", render: (u) => <span className="text-slate-500">{fmtDate(u.last_login)}</span> },
@@ -120,10 +127,8 @@ export default function UsersView() {
       <DataTable testId="users-table" title={`${rows.length} users`} columns={columns} rows={rows} rowKey="email"
         searchKeys={["name", "email", "organization", "district"]} exportName="users" exportColumns={COLS}
         filters={
-          <select data-testid="users-role-filter" value={role} onChange={(e) => setRole(e.target.value)} className={`${selectSm} h-10`}>
-            <option value="all">All roles</option>
-            {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          <UiSelect testId="users-role-filter" value={role} onChange={setRole} className="w-[160px]"
+            options={[{ value: "all", label: "All roles" }, ...Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))]} />
         } />
       {adding && <AddUserDialog headAdmin={headAdmin} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); refresh(); }} />}
     </div>

@@ -6,6 +6,8 @@ import { useAuth } from "@/context/AuthContext";
 import { inputCls, btnPrimary, fmtDate } from "@/lib/format";
 import { Panel, PageHeader, LoadingBlock } from "@/components/reloop/Primitives";
 import { FileField } from "@/components/reloop/Files";
+import { Input } from "@/components/ui/input";
+import { UiSelect } from "@/components/reloop/Fields";
 
 const VEHICLES = ["Bike", "Auto", "Van", "Mini Truck", "Truck"];
 const BANNERS = {
@@ -41,6 +43,7 @@ const KycForm = ({ kyc, districts, onSaved }) => {
   const submit = async (e) => {
     e.preventDefault();
     if (!files.license || !files.photo || !files.selfie) return toast.error("Please upload licence, photo and selfie");
+    if (!form.district) return toast.error("Select your operating district");
     setBusy(true);
     try {
       const { data } = await api.put("/kyc/me", { ...form, license_file_id: files.license.id, photo_file_id: files.photo.id, selfie_file_id: files.selfie.id });
@@ -58,14 +61,12 @@ const KycForm = ({ kyc, districts, onSaved }) => {
       <Panel title="Vehicle & Licence Details">
         <div className="grid gap-4 sm:grid-cols-2">
           <div><Label>Operating District</Label>
-            <select data-testid="kyc-district-select" required value={form.district} onChange={set("district")} className={inputCls}>
-              <option value="">Select district</option>{districts.map((d) => <option key={d}>{d}</option>)}
-            </select></div>
-          <div><Label>Mobile Number</Label><input data-testid="kyc-phone-input" required minLength={8} value={form.phone} onChange={set("phone")} placeholder="+91" className={inputCls} /></div>
+            <UiSelect testId="kyc-district-select" value={form.district} onChange={(v) => setForm({ ...form, district: v })} options={districts} placeholder="Select district" /></div>
+          <div><Label>Mobile Number</Label><Input data-testid="kyc-phone-input" required minLength={8} value={form.phone} onChange={set("phone")} placeholder="+91" className={inputCls} /></div>
           <div><Label>Vehicle Type</Label>
-            <select data-testid="kyc-vehicle-type-select" value={form.vehicle_type} onChange={set("vehicle_type")} className={inputCls}>{VEHICLES.map((v) => <option key={v}>{v}</option>)}</select></div>
-          <div><Label>Vehicle Number</Label><input data-testid="kyc-vehicle-number-input" required minLength={4} value={form.vehicle_number} onChange={set("vehicle_number")} placeholder="TN 01 AB 1234" className={`${inputCls} font-mono uppercase`} /></div>
-          <div className="sm:col-span-2"><Label>Driving Licence Number</Label><input data-testid="kyc-license-number-input" required minLength={5} value={form.license_number} onChange={set("license_number")} placeholder="TN01 20200012345" className={`${inputCls} font-mono uppercase`} /></div>
+            <UiSelect testId="kyc-vehicle-type-select" value={form.vehicle_type} onChange={(v) => setForm({ ...form, vehicle_type: v })} options={VEHICLES} /></div>
+          <div><Label>Vehicle Number</Label><Input data-testid="kyc-vehicle-number-input" required minLength={4} value={form.vehicle_number} onChange={set("vehicle_number")} placeholder="TN 01 AB 1234" className={`${inputCls} font-mono uppercase`} /></div>
+          <div className="sm:col-span-2"><Label>Driving Licence Number</Label><Input data-testid="kyc-license-number-input" required minLength={5} value={form.license_number} onChange={set("license_number")} placeholder="TN01 20200012345" className={`${inputCls} font-mono uppercase`} /></div>
         </div>
       </Panel>
       <Panel title="Documents" subtitle="JPG, PNG, WEBP or PDF · max 5 MB">

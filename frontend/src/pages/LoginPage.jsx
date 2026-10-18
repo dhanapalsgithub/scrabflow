@@ -6,6 +6,8 @@ import { formatApiError } from "@/lib/api";
 import { ROLE_LABELS } from "@/lib/menu";
 import { inputCls } from "@/lib/format";
 import { Logo } from "@/components/reloop/Sidebar";
+import { Input } from "@/components/ui/input";
+import { UiSelect } from "@/components/reloop/Fields";
 
 const HIGHLIGHTS = [
   { icon: Leaf, text: "Sell household & industrial scrap at transparent rates" },
@@ -71,15 +73,14 @@ export default function LoginPage() {
           )}
 
           <label className="mt-6 block text-xs font-semibold uppercase tracking-wider text-slate-500">Role</label>
-          <select data-testid="login-role-select" value={form.role} onChange={set("role")} className={`${inputCls} mt-2`}>
-            {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          <div className="mt-2"><UiSelect testId="login-role-select" value={form.role} onChange={(v) => setForm({ ...form, role: v })} className="h-11"
+            options={Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))} /></div>
 
           <label className="mt-4 block text-xs font-semibold uppercase tracking-wider text-slate-500">Work Email</label>
-          <input data-testid="login-email-input" type="email" required value={form.email} onChange={set("email")} placeholder="you@company.com" className={`${inputCls} mt-2`} />
+          <Input data-testid="login-email-input" type="email" required value={form.email} onChange={set("email")} placeholder="you@company.com" className={`${inputCls} mt-2`} />
 
           <label className="mt-4 block text-xs font-semibold uppercase tracking-wider text-slate-500">Password</label>
-          <input data-testid="login-password-input" type="password" required value={form.password} onChange={set("password")} placeholder="••••••••" className={`${inputCls} mt-2`} />
+          <Input data-testid="login-password-input" type="password" required value={form.password} onChange={set("password")} placeholder="••••••••" className={`${inputCls} mt-2`} />
 
           <button data-testid="login-submit-btn" type="submit" disabled={busy} className="mt-7 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}

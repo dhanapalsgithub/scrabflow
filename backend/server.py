@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import re
+import secrets
 import uuid
 import asyncio
 import logging
@@ -16,6 +17,7 @@ from typing import Optional, List, Literal
 import bcrypt
 import jwt
 import requests
+import razorpay
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from starlette.middleware.cors import CORSMiddleware
@@ -125,10 +127,15 @@ class LoginIn(BaseModel):
     role: Optional[str] = None
 
 
-class PickupCreate(BaseModel):
-    material: Literal["Mixed Paper", "Plastics", "E-Waste", "Metals"]
+class PickupItem(BaseModel):
+    material: str = Field(min_length=2)
     weight: float = Field(gt=0)
     unit: Literal["Kg", "Tons"] = "Kg"
+
+
+class PickupCreate(BaseModel):
+    items: List[PickupItem] = Field(min_length=1, max_length=10)
+    payment_method: Literal["cod", "online"] = "cod"
     district: str = Field(min_length=2)
     address: str = Field(min_length=3)
     phone: Optional[str] = ""
@@ -139,6 +146,19 @@ class PickupCreate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: Literal["Pending", "Accepted", "In Progress", "Completed", "Cancelled"]
+    otp: Optional[str] = None
+    cash_collected: Optional[bool] = None
+
+
+class PaymentOrderIn(BaseModel):
+    pickup_id: str
+
+
+class PaymentVerifyIn(BaseModel):
+    pickup_id: str
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
 
 
 class SettingsUpdate(BaseModel):
@@ -146,6 +166,7 @@ class SettingsUpdate(BaseModel):
     platform_name: Optional[str] = None
     support_email: Optional[str] = None
     min_pickup_kg: Optional[float] = Field(default=None, ge=0)
+    service_fee: Optional[float] = Field(default=None, ge=0)
     service_districts: Optional[List[str]] = None
     dispatch_mode: Optional[Literal["open", "admin_assign"]] = None
 
@@ -253,6 +274,16 @@ def assignee_fields(partner: dict) -> dict:
 CLEAR_ASSIGNEE = {"assigned_to": None, "assigned_name": "", "assigned_phone": "", "assigned_vehicle": ""}
 
 
+def strip_otp(p: dict, user: dict) -> dict:
+    if not (user["role"] in CUSTOMER_ROLES and p.get("customer_email") == user["email"]):
+        p.pop("otp", None)
+    return p
+
+
+def items_of(p: dict) -> List[dict]:
+    return p.get("items") or [{"material": p["material"], "weight_kg": p["weight_kg"], "amount": p["amount"]}]
+
+
 def is_verified(user: dict) -> bool:
     return (user.get("kyc") or {}).get("status") == "verified"
 
@@ -282,16 +313,17 @@ def money_stats(pickups: List[dict]) -> dict:
     return {"total": round(total, 2), "paid": round(paid, 2), "pending": round(pending, 2), "kg": round(kg, 2)}
 
 
-def breakdowns(pickups: List[dict]) -> dict:
+def breakdowns(pickups: List[dict], materials=MATERIALS) -> dict:
     by_status = {s: 0 for s in STATUSES}
-    by_material = {m: {"material": m, "kg": 0.0, "amount": 0.0, "orders": 0} for m in MATERIALS}
+    by_material = {m: {"material": m, "kg": 0.0, "amount": 0.0, "orders": 0} for m in materials}
     by_district = defaultdict(lambda: {"district": "", "kg": 0.0, "amount": 0.0, "orders": 0})
     for p in pickups:
         by_status[p["status"]] = by_status.get(p["status"], 0) + 1
         if p["status"] == "Cancelled":
             continue
-        m = by_material.setdefault(p["material"], {"material": p["material"], "kg": 0.0, "amount": 0.0, "orders": 0})
-        m["kg"] += p["weight_kg"]; m["amount"] += p["amount"]; m["orders"] += 1
+        for it in items_of(p):
+            m = by_material.setdefault(it["material"], {"material": it["material"], "kg": 0.0, "amount": 0.0, "orders": 0})
+            m["kg"] += it["weight_kg"]; m["amount"] += it["amount"]; m["orders"] += 1
         d = by_district[p["district"]]
         d["district"] = p["district"]; d["kg"] += p["weight_kg"]; d["amount"] += p["amount"]; d["orders"] += 1
     return {
@@ -390,11 +422,15 @@ async def write_settings(body: SettingsUpdate, user: dict = Depends(require("adm
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if "rates" in patch:
         rates = {}
-        for m in MATERIALS:
-            val = float(patch["rates"].get(m, 0))
-            if val < 0:
-                raise HTTPException(400, f"Rate for {m} must be positive")
-            rates[m] = val
+        for m, v in patch["rates"].items():
+            name = str(m).strip()
+            if len(name) < 2:
+                raise HTTPException(400, "Scrap type name must have at least 2 characters")
+            if float(v) < 0:
+                raise HTTPException(400, f"Rate for {name} must be positive")
+            rates[name] = float(v)
+        if not rates:
+            raise HTTPException(400, "Keep at least one scrap type")
         patch["rates"] = rates
     if "service_districts" in patch:
         patch["service_districts"] = [d.strip() for d in patch["service_districts"] if d.strip()]
@@ -425,16 +461,29 @@ async def list_pickups(role: Optional[str] = None, email: Optional[str] = None, 
             query["assigned_to"] = user["email"]
     if status and status in STATUSES:
         query["status"] = status
-    return await db.pickups.find(query, NO_ID).sort("created_at", -1).to_list(5000)
+    return [strip_otp(p, user) for p in await db.pickups.find(query, NO_ID).sort("created_at", -1).to_list(5000)]
 
 
 @api.post("/scrap/pickups/create")
 async def create_pickup(body: PickupCreate, user: dict = Depends(require("public", "corporate", "admin"))):
     settings = await get_settings()
-    weight_kg = body.weight * 1000 if body.unit == "Tons" else body.weight
+    items, seen = [], set()
+    for it in body.items:
+        if it.material not in settings["rates"]:
+            raise HTTPException(400, f"Unknown scrap type: {it.material}")
+        if it.material in seen:
+            raise HTTPException(400, f"{it.material} is added twice")
+        seen.add(it.material)
+        wkg = round(it.weight * 1000 if it.unit == "Tons" else it.weight, 2)
+        rate = float(settings["rates"][it.material])
+        items.append({"material": it.material, "weight": it.weight, "unit": it.unit, "weight_kg": wkg, "rate": rate, "amount": round(wkg * rate, 2)})
+    weight_kg = round(sum(i["weight_kg"] for i in items), 2)
     if weight_kg < float(settings.get("min_pickup_kg", 0)):
         raise HTTPException(400, f"Minimum pickup weight is {settings.get('min_pickup_kg')} kg")
-    rate = float(settings["rates"].get(body.material, 0))
+    fee = float(settings.get("service_fee", 0))
+    if body.payment_method == "online" and fee > 0 and not razorpay_enabled():
+        raise HTTPException(400, "Online payment is not available yet. Please choose Cash on Delivery.")
+    material_label = " + ".join(i["material"] for i in items)
     photos = []
     for fid in body.photo_ids:
         rec = await db.files.find_one({"id": fid, "owner_email": user["email"], "category": "scrap", "is_deleted": False}, NO_ID)
@@ -444,19 +493,23 @@ async def create_pickup(body: PickupCreate, user: dict = Depends(require("public
     ts = now_iso()
     doc = {
         "id": f"RL-{uuid.uuid4().hex[:6].upper()}",
-        **body.model_dump(exclude={"photo_ids"}),
+        **body.model_dump(exclude={"photo_ids", "items"}),
+        "items": items,
+        "material": material_label,
         "photos": photos,
         "district": body.district.strip(),
         "address": body.address.strip(),
-        "weight_kg": round(weight_kg, 2),
-        "rate": rate,
-        "amount": round(weight_kg * rate, 2),
+        "weight_kg": weight_kg,
+        "amount": round(sum(i["amount"] for i in items), 2),
+        "service_fee": fee,
+        "payment_status": "not_required" if fee == 0 else "pending",
+        "otp": f"{secrets.randbelow(10000):04d}",
         "customer_email": user["email"],
         "customer_name": user.get("name", ""),
         "customer_role": user["role"],
         "status": "Pending",
         **CLEAR_ASSIGNEE,
-        "history": [hist("Pending", user, f"Pickup requested · {round(weight_kg, 2)} kg {body.material}")],
+        "history": [hist("Pending", user, f"Pickup requested · {weight_kg} kg · {material_label}")],
         "created_at": ts,
         "updated_at": ts,
     }
@@ -487,6 +540,11 @@ async def update_status(pickup_id: str, body: StatusUpdate, user: dict = Depends
             raise HTTPException(403, "This order is assigned to another partner")
         elif body.status not in DELIVERY_NEXT.get(pickup["status"], set()):
             raise HTTPException(400, f"Cannot move from {pickup['status']} to {body.status}")
+        if body.status == "Completed":
+            if (body.otp or "").strip() != pickup.get("otp"):
+                raise HTTPException(400, "Incorrect OTP. Ask the customer for the 4-digit pickup code.")
+            if pickup.get("payment_method") == "cod" and pickup.get("payment_status") == "pending" and not body.cash_collected:
+                raise HTTPException(400, "Confirm that the cash service fee was collected")
     elif role != "admin":
         raise HTTPException(403, "You do not have permission to update pickups")
     ts = now_iso()
@@ -503,8 +561,14 @@ async def update_status(pickup_id: str, body: StatusUpdate, user: dict = Depends
         patch.update(CLEAR_ASSIGNEE)
     if body.status == "Completed":
         patch["settled_at"] = ts
+        patch["otp_verified"] = role == "delivery_partner"
+        if role == "admin":
+            note += " · completed by admin"
+        if pickup.get("payment_method") == "cod" and pickup.get("payment_status") == "pending" and body.cash_collected:
+            patch.update({"payment_status": "paid", "paid_at": ts})
+            note += f" · ₹{pickup.get('service_fee', 0)} cash fee collected"
     await db.pickups.update_one({"id": pickup_id}, {"$set": patch, "$push": {"history": hist(body.status, user, note)}})
-    return await db.pickups.find_one({"id": pickup_id}, NO_ID)
+    return strip_otp(await db.pickups.find_one({"id": pickup_id}, NO_ID), user)
 
 
 @api.get("/scrap/dashboard/summary")
@@ -541,13 +605,14 @@ async def summary(user: dict = Depends(current_user)):
                  card("paid", "Settled Payouts", s["paid"], "inr", "Completed orders"),
                  card("pending", "Pending Disbursements", s["pending"], "inr", "Open orders"),
                  card("users", "Registered Users", users, "number", f"{round(s['kg'], 1)} kg recycled")]
-    return {"role": role, "cards": cards, **breakdowns(pickups), "recent": pickups[:6], "total_orders": len(pickups)}
+    materials = list((await get_settings())["rates"].keys())
+    return {"role": role, "cards": cards, **breakdowns(pickups, materials), "recent": [strip_otp(p, user) for p in pickups[:6]], "total_orders": len(pickups)}
 
 
 # ---------- Zones ----------
 @api.get("/zones")
 async def list_zones(user: dict = Depends(require("partner", "admin", "delivery_partner"))):
-    zones = await db.zones.find({}, NO_ID).sort("zone_id", 1).to_list(500)
+    zones = await db.zones.find(district_filter(user, "city"), NO_ID).sort("zone_id", 1).to_list(500)
     zm = await zone_metrics(zones)
     zm.pop("pickups")
     return {"zones": zones, "metrics": zm}
@@ -555,6 +620,8 @@ async def list_zones(user: dict = Depends(require("partner", "admin", "delivery_
 
 @api.post("/zones")
 async def create_zone(body: ZoneIn, user: dict = Depends(require("partner", "admin"))):
+    if not in_scope(user, body.city):
+        raise HTTPException(403, "You can only manage zones in your own district")
     if await db.zones.find_one({"zone_id": body.zone_id.strip()}):
         raise HTTPException(400, "Zone ID already exists")
     doc = {**body.model_dump(), "zone_id": body.zone_id.strip(), "created_at": now_iso()}
@@ -564,8 +631,11 @@ async def create_zone(body: ZoneIn, user: dict = Depends(require("partner", "adm
 
 @api.put("/zones/{zone_id}")
 async def update_zone(zone_id: str, body: ZoneIn, user: dict = Depends(require("partner", "admin"))):
-    if not await db.zones.find_one({"zone_id": zone_id}):
+    existing = await db.zones.find_one({"zone_id": zone_id}, NO_ID)
+    if not existing or not in_scope(user, existing["city"]):
         raise HTTPException(404, "Zone not found")
+    if not in_scope(user, body.city):
+        raise HTTPException(403, "You can only manage zones in your own district")
     new_id = body.zone_id.strip()
     if new_id != zone_id and await db.zones.find_one({"zone_id": new_id}):
         raise HTTPException(400, "Zone ID already exists")
@@ -575,7 +645,7 @@ async def update_zone(zone_id: str, body: ZoneIn, user: dict = Depends(require("
 
 @api.delete("/zones/{zone_id}")
 async def delete_zone(zone_id: str, user: dict = Depends(require("partner", "admin"))):
-    res = await db.zones.delete_one({"zone_id": zone_id})
+    res = await db.zones.delete_one({"zone_id": zone_id, **district_filter(user, "city")})
     if not res.deleted_count:
         raise HTTPException(404, "Zone not found")
     return {"ok": True}
@@ -624,6 +694,8 @@ async def update_user(user_id: str, body: UserUpdate, user: dict = Depends(requi
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if admin_district(user) and (patch.get("role") == "admin" or "admin_scope" in patch or target["role"] == "admin"):
         raise HTTPException(403, "Only head admins can manage admin accounts")
+    if "admin_scope" in patch and patch["admin_scope"] != "All" and patch["admin_scope"] not in (await get_settings())["service_districts"]:
+        raise HTTPException(400, "Choose a valid district for the admin scope")
     if "district" in patch and not in_scope(user, patch["district"]):
         raise HTTPException(403, "You can only assign users to your own district")
     if patch.get("role") == "delivery_partner" and not target.get("kyc"):
@@ -656,10 +728,10 @@ async def compliance(user: dict = Depends(require("admin", "corporate"))):
     done = [p for p in pickups if p["status"] == "Completed"]
     total = len(pickups)
     by_material = []
-    for m in MATERIALS:
-        items = [p for p in done if p["material"] == m]
-        kg = sum(p["weight_kg"] for p in items)
-        by_material.append({"material": m, "orders": len(items), "kg": round(kg, 2), "co2_saved_kg": round(kg * CO2_FACTORS[m], 2)})
+    for m in (await get_settings())["rates"].keys():
+        items = [it for p in done for it in items_of(p) if it["material"] == m]
+        kg = sum(it["weight_kg"] for it in items)
+        by_material.append({"material": m, "orders": len(items), "kg": round(kg, 2), "co2_saved_kg": round(kg * CO2_FACTORS.get(m, 1.0), 2)})
     monthly = defaultdict(lambda: {"month": "", "orders": 0, "kg": 0.0, "amount": 0.0})
     for p in done:
         key = p["created_at"][:7]
@@ -688,7 +760,7 @@ async def pickup_detail(pickup_id: str, user: dict = Depends(current_user)):
     pickup = await db.pickups.find_one({"id": pickup_id}, NO_ID)
     if not pickup or not await can_view_pickup(user, pickup):
         raise HTTPException(404, "Pickup not found")
-    return pickup
+    return strip_otp(pickup, user)
 
 
 @api.put("/scrap/pickups/{pickup_id}/assign")
@@ -714,6 +786,58 @@ async def verified_partners(user: dict = Depends(require("admin"))):
     query = {"role": "delivery_partner", "kyc.status": "verified", "active": {"$ne": False}, **district_filter(user)}
     partners = await db.users.find(query, USER_PROJ).to_list(1000)
     return [{"email": p["email"], "name": p.get("name", ""), "district": p.get("district", ""), "vehicle_number": p["kyc"].get("vehicle_number", "")} for p in partners]
+
+
+# ---------- Payments (Razorpay) ----------
+def razorpay_enabled() -> bool:
+    return bool(os.environ.get("RAZORPAY_KEY_ID") and os.environ.get("RAZORPAY_KEY_SECRET"))
+
+
+def razorpay_client():
+    if not razorpay_enabled():
+        raise HTTPException(503, "Online payments are not configured yet")
+    return razorpay.Client(auth=(os.environ["RAZORPAY_KEY_ID"], os.environ["RAZORPAY_KEY_SECRET"]))
+
+
+async def own_online_pickup(pickup_id: str, user: dict) -> dict:
+    p = await db.pickups.find_one({"id": pickup_id, "customer_email": user["email"]}, NO_ID)
+    if not p:
+        raise HTTPException(404, "Pickup not found")
+    if p.get("payment_status") != "pending" or p["status"] == "Cancelled":
+        raise HTTPException(400, "No payment is due for this pickup")
+    return p
+
+
+@api.get("/payments/config")
+async def payments_config(user: dict = Depends(current_user)):
+    s = await get_settings()
+    return {"online_enabled": razorpay_enabled(), "key_id": os.environ.get("RAZORPAY_KEY_ID") or "", "service_fee": s.get("service_fee", 0)}
+
+
+@api.post("/payments/razorpay/order")
+async def create_payment_order(body: PaymentOrderIn, user: dict = Depends(require(*CUSTOMER_ROLES))):
+    p = await own_online_pickup(body.pickup_id, user)
+    rz = razorpay_client()
+    order = await asyncio.to_thread(rz.order.create, {"amount": int(round(p["service_fee"] * 100)), "currency": "INR",
+                                                      "receipt": p["id"], "notes": {"pickup_id": p["id"], "email": user["email"]}})
+    await db.pickups.update_one({"id": p["id"]}, {"$set": {"payment_method": "online", "payment_order_id": order["id"]}})
+    return {"order_id": order["id"], "amount": order["amount"], "currency": "INR", "key_id": os.environ["RAZORPAY_KEY_ID"],
+            "name": user.get("name", ""), "email": user["email"], "contact": user.get("phone", "")}
+
+
+@api.post("/payments/razorpay/verify")
+async def verify_payment(body: PaymentVerifyIn, user: dict = Depends(require(*CUSTOMER_ROLES))):
+    p = await own_online_pickup(body.pickup_id, user)
+    if p.get("payment_order_id") != body.razorpay_order_id:
+        raise HTTPException(400, "Payment order mismatch")
+    try:
+        razorpay_client().utility.verify_payment_signature({"razorpay_order_id": body.razorpay_order_id,
+                                                            "razorpay_payment_id": body.razorpay_payment_id, "razorpay_signature": body.razorpay_signature})
+    except razorpay.errors.SignatureVerificationError:
+        raise HTTPException(400, "Payment verification failed")
+    await db.pickups.update_one({"id": p["id"]}, {"$set": {"payment_status": "paid", "payment_id": body.razorpay_payment_id, "paid_at": now_iso()},
+                                                "$push": {"history": hist(p["status"], user, f"Online payment of ₹{p['service_fee']} received")}})
+    return strip_otp(await db.pickups.find_one({"id": p["id"]}, NO_ID), user)
 
 
 # ---------- Files ----------
@@ -832,6 +956,10 @@ async def seed():
         partner = await db.users.find_one({"email": p["assigned_to"]}, USER_PROJ)
         if partner:
             await db.pickups.update_one({"id": p["id"]}, {"$set": assignee_fields(partner)})
+    async for p in db.pickups.find({"items": {"$exists": False}}, NO_ID):
+        await db.pickups.update_one({"id": p["id"]}, {"$set": {
+            "items": [{"material": p["material"], "weight": p.get("weight", p["weight_kg"]), "unit": p.get("unit", "Kg"), "weight_kg": p["weight_kg"], "rate": p.get("rate", 0), "amount": p["amount"]}],
+            "otp": f"{secrets.randbelow(10000):04d}", "payment_method": "cod", "service_fee": 0, "payment_status": "not_required"}})
     if not await db.settings.find_one({"key": "global"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "key": "global", "updated_at": now_iso()})
     if await db.zones.count_documents({}) == 0:
