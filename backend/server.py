@@ -29,9 +29,14 @@ from pydantic import BaseModel, Field
 
 from seed_data import SEED_USERS, SEED_ZONES, DEFAULT_SETTINGS, SAMPLE_PICKUPS
 
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-db = client[os.environ["DB_NAME"]]
-JWT_SECRET = os.environ["JWT_SECRET"]
+# Safe MongoDB connection supporting both MONGO_URL and DATABASE_URL
+mongo_connection_url = os.environ.get("MONGO_URL") or os.environ.get("DATABASE_URL")
+if not mongo_connection_url:
+    raise ValueError("MONGO_URL or DATABASE_URL must be set in environment variables")
+
+client = AsyncIOMotorClient(mongo_connection_url)
+db = client[os.environ.get("DB_NAME", "test_database")]
+JWT_SECRET = os.environ.get("JWT_SECRET", "fallback_secret")
 JWT_ALGORITHM = "HS256"
 
 STATUSES = ["Pending", "Accepted", "In Progress", "Completed", "Cancelled"]
@@ -938,7 +943,6 @@ async def download_file(file_id: str, user: dict = Depends(current_user)):
         data = base64.b64decode(rec["storage_data"])
         return Response(content=data, media_type=rec["content_type"])
     
-    # Fallback to external storage if old record exists
     try:
         data, _ = await asyncio.to_thread(get_object, rec.get("storage_path", ""))
         return Response(content=data, media_type=rec["content_type"])
@@ -1041,7 +1045,6 @@ async def seed():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- Startup ---
     await seed()
     logger.info("ReLoop seed complete")
     try:
@@ -1052,7 +1055,6 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # --- Shutdown ---
     print("App is shutting down...")
 
 app = FastAPI(title="ReLoop API", lifespan=lifespan)
