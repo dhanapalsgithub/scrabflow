@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 from pathlib import Path
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -10,6 +12,7 @@ import secrets
 import uuid
 import asyncio
 import logging
+import base64
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Literal
@@ -40,7 +43,6 @@ CO2_FACTORS = {"Mixed Paper": 0.9, "Plastics": 1.5, "E-Waste": 2.0, "Metals": 4.
 NO_ID = {"_id": 0}
 USER_PROJ = {"_id": 0, "password_hash": 0}
 
-app = FastAPI(title="ReLoop API")
 api = APIRouter(prefix="/api")
 logger = logging.getLogger("reloop")
 logging.basicConfig(level=logging.INFO)
@@ -58,22 +60,31 @@ def init_storage(force: bool = False):
     global _storage_key
     if _storage_key and not force:
         return _storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ["EMERGENT_LLM_KEY"]}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
+    try:
+        resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY", "")}, timeout=10)
+        if resp.status_code == 200:
+            _storage_key = resp.json().get("storage_key")
+            return _storage_key
+    except Exception:
+        pass
+    return None
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": init_storage(), "Content-Type": content_type}, data=data, timeout=120)
+    skey = init_storage()
+    if not skey:
+        raise Exception("Storage key not available")
+    resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": skey, "Content-Type": content_type}, data=data, timeout=30)
     if resp.status_code == 404:
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": init_storage(True), "Content-Type": content_type}, data=data, timeout=120)
+        skey = init_storage(True)
+        resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": skey, "Content-Type": content_type}, data=data, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
 
 def get_object(path: str):
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": init_storage()}, timeout=60)
+    skey = init_storage()
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": skey}, timeout=30)
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
@@ -125,6 +136,16 @@ class LoginIn(BaseModel):
     email: str
     password: str
     role: Optional[str] = None
+
+
+class RegisterIn(BaseModel):
+    email: str = Field(min_length=5)
+    password: str = Field(min_length=6)
+    name: str = Field(min_length=2)
+    role: Literal["public", "corporate", "partner", "delivery_partner"] = "public"
+    organization: Optional[str] = ""
+    phone: Optional[str] = ""
+    district: Optional[str] = "Chennai"
 
 
 class PickupItem(BaseModel):
@@ -358,10 +379,36 @@ def card(key, label, value, fmt, hint=""):
     return {"key": key, "label": label, "value": value, "format": fmt, "hint": hint}
 
 
-# ---------- Auth ----------
+# ---------- Auth & Registration ----------
 @api.get("/")
 async def root():
     return {"message": "ReLoop API running"}
+
+
+@api.post("/register")
+async def register_user(body: RegisterIn):
+    email = body.email.strip().lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(400, "A user with this email already exists")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": body.name.strip(),
+        "role": body.role,
+        "organization": body.organization or "",
+        "phone": body.phone or "",
+        "district": body.district or "Chennai",
+        "address": "",
+        "active": True,
+        "password_hash": hash_password(body.password),
+        "created_at": now_iso()
+    }
+    if body.role == "delivery_partner":
+        doc["kyc"] = {"status": "not_submitted"}
+    await db.users.insert_one(doc)
+    user_doc = await db.users.find_one({"email": email})
+    profile = await db.users.find_one({"email": email}, USER_PROJ)
+    return {"token": create_token(user_doc), "user": profile}
 
 
 @api.post("/login")
@@ -843,7 +890,7 @@ async def verify_payment(body: PaymentVerifyIn, user: dict = Depends(require(*CU
     return strip_otp(await db.pickups.find_one({"id": p["id"]}, NO_ID), user)
 
 
-# ---------- Files ----------
+# ---------- Files (Local Base64 Fallback Storage) ----------
 @api.post("/files/upload")
 async def upload_file(category: str = Form(...), file: UploadFile = File(...), user: dict = Depends(current_user)):
     if category == "scrap":
@@ -854,23 +901,31 @@ async def upload_file(category: str = Form(...), file: UploadFile = File(...), u
             raise HTTPException(403, "Only delivery partners can upload verification documents")
     else:
         raise HTTPException(400, "Invalid file category")
+    
     ctype = (file.content_type or "").lower()
     if ctype not in ALLOWED_TYPES:
         raise HTTPException(400, "Only JPG, PNG, WEBP, HEIC or PDF files are allowed")
+    
     data = await file.read()
     if len(data) > MAX_FILE_BYTES:
         raise HTTPException(400, "File is larger than 5 MB")
-    path = f"{APP_NAME}/{category}/{user['id']}/{uuid.uuid4()}.{ALLOWED_TYPES[ctype]}"
-    try:
-        result = await asyncio.to_thread(put_object, path, data, ctype)
-    except requests.RequestException as e:
-        logger.error(f"Upload failed: {e}")
-        raise HTTPException(502, "File storage is unavailable, please try again")
-    doc = {"id": str(uuid.uuid4()), "storage_path": result["path"], "original_filename": file.filename or "upload",
-           "content_type": ctype, "size": len(data), "category": category, "owner_email": user["email"],
-           "is_deleted": False, "created_at": now_iso()}
+    
+    file_id = str(uuid.uuid4())
+    encoded_data = base64.b64encode(data).decode('utf-8')
+    
+    doc = {
+        "id": file_id,
+        "storage_data": encoded_data,
+        "original_filename": file.filename or "upload",
+        "content_type": ctype,
+        "size": len(data),
+        "category": category,
+        "owner_email": user["email"],
+        "is_deleted": False,
+        "created_at": now_iso()
+    }
     await db.files.insert_one(doc)
-    return {k: doc[k] for k in ("id", "original_filename", "content_type", "category", "size")}
+    return {"id": file_id, "original_filename": file.filename, "content_type": ctype, "category": category, "size": len(data)}
 
 
 @api.get("/files/{file_id}")
@@ -878,17 +933,17 @@ async def download_file(file_id: str, user: dict = Depends(current_user)):
     rec = await db.files.find_one({"id": file_id, "is_deleted": False}, NO_ID)
     if not rec:
         raise HTTPException(404, "File not found")
-    owner = await db.users.find_one({"email": rec["owner_email"]}, {"_id": 0, "district": 1})
-    allowed = rec["owner_email"] == user["email"] or \
-        (user["role"] == "admin" and in_scope(user, (owner or {}).get("district", ""))) or \
-        (rec["category"] == "scrap" and user["role"] in ("delivery_partner", "partner"))
-    if not allowed:
-        raise HTTPException(404, "File not found")
+    
+    if "storage_data" in rec:
+        data = base64.b64decode(rec["storage_data"])
+        return Response(content=data, media_type=rec["content_type"])
+    
+    # Fallback to external storage if old record exists
     try:
-        data, _ = await asyncio.to_thread(get_object, rec["storage_path"])
-    except requests.RequestException:
-        raise HTTPException(502, "File storage is unavailable, please try again")
-    return Response(content=data, media_type=rec["content_type"])
+        data, _ = await asyncio.to_thread(get_object, rec.get("storage_path", ""))
+        return Response(content=data, media_type=rec["content_type"])
+    except Exception:
+        raise HTTPException(404, "File content not available")
 
 
 # ---------- Delivery partner verification (KYC) ----------
@@ -984,8 +1039,9 @@ async def seed():
             "otp": f"{secrets.randbelow(10000):04d}", "payment_method": "cod", "service_fee": 0, "payment_status": "not_required"}})
 
 
-@app.on_event("startup")
-async def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup ---
     await seed()
     logger.info("ReLoop seed complete")
     try:
@@ -993,12 +1049,13 @@ async def on_startup():
         logger.info("Storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
+    
+    yield
+    
+    # --- Shutdown ---
+    print("App is shutting down...")
 
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    client.close()
-
+app = FastAPI(title="ReLoop API", lifespan=lifespan)
 
 app.include_router(api)
 app.add_middleware(

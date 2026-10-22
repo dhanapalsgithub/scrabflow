@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowRight, Loader2, Leaf, Truck, Building2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
@@ -85,6 +85,10 @@ export default function LoginPage() {
           <button data-testid="login-submit-btn" type="submit" disabled={busy} className="mt-7 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
           </button>
+
+          <p className="mt-4 text-center text-sm text-slate-500">
+            Don't have an account? <Link to="/register" className="font-semibold text-emerald-600 hover:underline">Sign up</Link>
+          </p>
         </form>
       </main>
     </div>
