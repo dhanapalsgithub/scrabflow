@@ -1,10 +1,11 @@
 fastapi
 uvicorn
-sqlalchemy
-psycopg2-binary
 pydantic
 python-dotenv
 bcrypt
 PyJWT
 passlib
 requests
+razorpay
+motor
+pymongo
