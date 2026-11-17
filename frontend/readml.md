@@ -3,7 +3,7 @@ test29@gmail.com	public@123	 for public
 test30@gmail.com	cor@123	 forcorporate
 test31@gmail.com	partner@123 for	partner
 test32@gmail.com	delivery@123	delivery partner
-test33@gmail.com	admin@123	admin
+test33@gmail.com	admin@123	admin(verfiy approved access)
 
 
 

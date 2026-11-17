@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { Image as ImageIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, formatApiError } from "@/lib/api";
 import { usePolling } from "@/hooks/usePolling";
 import { inr, kg, fmtDate, STATUSES, slug } from "@/lib/format";
@@ -8,6 +10,21 @@ import { LiveSync } from "@/components/reloop/LiveSync";
 import { DataTable } from "@/components/reloop/DataTable";
 import { PickupTimeline, TrackButton } from "@/components/reloop/PickupTimeline";
 import { payOnline } from "@/lib/razorpay";
+
+const PhotosDialog = ({ photos, onClose }) => (
+  <Dialog open onOpenChange={onClose}>
+    <DialogContent className="max-w-lg rounded-2xl">
+      <DialogHeader><DialogTitle>Your Uploaded Photos</DialogTitle></DialogHeader>
+      <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto p-1">
+        {photos.map((p, idx) => (
+          <div key={idx} className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 aspect-square flex items-center justify-center">
+            <img src={`/api/files/${p.id}`} alt={p.original_filename} className="w-full h-full object-cover" />
+          </div>
+        ))}
+      </div>
+    </DialogContent>
+  </Dialog>
+);
 
 const PayCell = ({ p, onPaid }) => {
   if (p.payment_status === "paid") return <span className="text-xs font-semibold text-emerald-700" data-testid={`payment-status-${p.id}`}>Fee paid</span>;
@@ -30,6 +47,7 @@ export default function UserPickupsList() {
   const FINAL_OTP = ["Completed", "Cancelled"];
   const [filter, setFilter] = useState("All");
   const [tracking, setTracking] = useState(null);
+  const [viewPhotos, setViewPhotos] = useState(null);
   const { data, loading, refresh, lastSync } = usePolling(() => api.get("/scrap/pickups/all").then((r) => r.data));
 
   const cancel = async (id) => {
@@ -44,11 +62,17 @@ export default function UserPickupsList() {
 
   if (loading && !data) return <LoadingBlock />;
   const rows = (data || []).filter((p) => filter === "All" || p.status === filter);
+  
   const columns = [
     { label: "Order ID", render: (p) => <TrackButton id={p.id} onClick={() => setTracking(p.id)} /> },
     { label: "Material", key: "material" },
     { label: "Weight", render: (p) => <span className="font-mono font-bold">{kg(p.weight_kg)}</span> },
     { label: "Earnings", render: (p) => <span className="font-mono font-bold text-slate-900">{inr(p.amount)}</span> },
+    { label: "Photos", render: (p) => p.photos && p.photos.length > 0 ? (
+      <button type="button" onClick={() => setViewPhotos(p.photos)} className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+        <ImageIcon className="h-3.5 w-3.5" /> {p.photos.length} photo{p.photos.length > 1 ? 's' : ''}
+      </button>
+    ) : <span className="text-xs text-slate-400">No photos</span> },
     { label: "District & Address", wide: true, render: (p) => <><p className="font-medium">{p.district}</p><p className="max-w-[240px] truncate text-xs text-slate-500">{p.address}</p></> },
     { label: "Status", render: (p) => <StatusBadge status={p.status} testId={`user-pickup-status-${p.id}`} /> },
     { label: "Pickup OTP", render: (p) => FINAL_OTP.includes(p.status) ? <span className="text-xs text-slate-400">—</span> : <span className="rounded-md bg-slate-950 px-2 py-1 font-mono text-sm font-bold tracking-[0.3em] text-emerald-400" data-testid={`pickup-otp-${p.id}`}>{p.otp}</span> },
@@ -76,6 +100,7 @@ export default function UserPickupsList() {
       <DataTable testId="user-pickups-table" columns={columns} rows={rows} searchKeys={["id", "material", "district", "address", "assigned_name"]}
         exportName="my-pickups" exportColumns={PICKUP_COLUMNS} emptyText="No pickups in this view" />
       {tracking && <PickupTimeline pickupId={tracking} onClose={() => setTracking(null)} />}
+      {viewPhotos && <PhotosDialog photos={viewPhotos} onClose={() => setViewPhotos(null)} />}
     </div>
   );
 }

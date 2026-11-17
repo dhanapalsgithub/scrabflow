@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { CheckCircle2, KeyRound } from "lucide-react";
+import { CheckCircle2, KeyRound, Image as ImageIcon, DollarSign } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,6 +21,21 @@ const FINAL = ["Completed", "Cancelled"];
 const DELIVERY_OPTIONS = { Accepted: ["Accepted", "In Progress", "Pending"], "In Progress": ["In Progress", "Completed", "Pending"] };
 
 const sum = (rows, pred) => rows.filter(pred).reduce((a, p) => a + p.amount, 0);
+
+const PhotosDialog = ({ photos, onClose }) => (
+  <Dialog open onOpenChange={onClose}>
+    <DialogContent className="max-w-lg rounded-2xl" data-testid="photos-dialog">
+      <DialogHeader><DialogTitle>Scrap Uploaded Photos</DialogTitle></DialogHeader>
+      <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto p-1">
+        {photos.map((p, idx) => (
+          <div key={idx} className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 aspect-square flex items-center justify-center">
+            <img src={`/api/files/${p.id}`} alt={p.original_filename} className="w-full h-full object-cover" />
+          </div>
+        ))}
+      </div>
+    </DialogContent>
+  </Dialog>
+);
 
 const CompleteDialog = ({ pickup, isAdmin, onClose, onSubmit }) => {
   const [otp, setOtp] = useState("");
@@ -62,9 +77,12 @@ export default function RealPickupsList({ mode = "all" }) {
   const [tracking, setTracking] = useState(null);
   const [partners, setPartners] = useState([]);
   const [completing, setCompleting] = useState(null);
+  const [viewPhotos, setViewPhotos] = useState(null);
+
   useEffect(() => {
     if (isAdmin) api.get("/admin/delivery-partners").then((r) => setPartners(r.data));
   }, [isAdmin]);
+
   const { data, loading, refresh, setData, lastSync } = usePolling(() =>
     api.get("/scrap/pickups/all", { params: { role: user.role, email: undefined, assigned: mode === "assigned" ? "me" : undefined } }).then((r) => r.data)
   );
@@ -92,16 +110,32 @@ export default function RealPickupsList({ mode = "all" }) {
     }
   };
 
+  const adminPay = async (id) => {
+    try {
+      const { data: updated } = await api.put(`/scrap/pickups/${id}/status`, { status: "Completed", cash_collected: true });
+      setData((rows) => rows.map((r) => (r.id === id ? updated : r)));
+      toast.success(`Order ${id} payment marked as settled/paid`);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
   if (loading && !data) return <LoadingBlock />;
   const all = data || [];
   const districts = [...new Set(all.map((p) => p.district))].sort();
   const rows = all.filter((p) => (status === "All" || p.status === status) && (district === "All" || p.district === district));
   const canChange = (p) => (isAdmin && !FINAL.includes(p.status)) || (verified && p.assigned_to === user.email && !FINAL.includes(p.status));
+  
   const columns = [
     { label: "Order ID", render: (p) => <TrackButton id={p.id} onClick={() => setTracking(p.id)} /> },
     { label: "Material", key: "material" },
     { label: "Weight (kg)", render: (p) => <span className="font-mono font-bold">{kg(p.weight_kg)}</span> },
     { label: "Total Amount", render: (p) => <span className="font-mono font-bold text-slate-900">{inr(p.amount)}</span> },
+    { label: "Photos", render: (p) => p.photos && p.photos.length > 0 ? (
+      <button type="button" onClick={() => setViewPhotos(p.photos)} className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+        <ImageIcon className="h-3.5 w-3.5" /> {p.photos.length} photo{p.photos.length > 1 ? 's' : ''}
+      </button>
+    ) : <span className="text-xs text-slate-400">No photos</span> },
     { label: "Customer Email", key: "customer_email" },
     { label: "District & Address", wide: true, render: (p) => <><p className="font-medium">{p.district}</p><p className="max-w-[220px] truncate text-xs text-slate-500">{p.address}</p></> },
     { label: "Status", render: (p) => canChange(p) ? (
@@ -110,15 +144,25 @@ export default function RealPickupsList({ mode = "all" }) {
     ) : <StatusBadge status={p.status} testId={`pickup-status-${p.id}`} /> },
     { label: "Date", render: (p) => <span className="text-slate-500">{fmtDate(p.created_at)}</span> },
   ];
-  if (isAdmin) columns.push({ label: "Assign Partner", render: (p) => FINAL.includes(p.status) ? <span className="text-xs text-slate-500">{p.assigned_name || "—"}</span> : (
-    <UiSelect testId={`assign-select-${p.id}`} value={p.assigned_to || ""} onChange={(v) => assign(p.id, v)} className="h-9 w-[180px] text-xs"
-      placeholder={partners.length ? "Select partner" : "No verified partners"} options={partners.map((d) => ({ value: d.email, label: `${d.name} · ${d.vehicle_number}` }))} />) });
+
+  if (isAdmin) {
+    columns.push({ label: "Assign Partner", render: (p) => FINAL.includes(p.status) ? <span className="text-xs text-slate-500">{p.assigned_name || "—"}</span> : (
+      <UiSelect testId={`assign-select-${p.id}`} value={p.assigned_to || ""} onChange={(v) => assign(p.id, v)} className="h-9 w-[180px] text-xs"
+        placeholder={partners.length ? "Select partner" : "No verified partners"} options={partners.map((d) => ({ value: d.email, label: `${d.name} · ${d.vehicle_number}` }))} />
+    ) });
+    columns.push({ label: "Admin Pay", render: (p) => p.payment_status !== "paid" ? (
+      <button type="button" onClick={() => adminPay(p.id)} className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 flex items-center gap-1">
+        <DollarSign className="h-3 w-3" /> Pay / Settle
+      </button>
+    ) : <span className="text-xs font-semibold text-emerald-700">Settled</span> });
+  }
+
   if (isDelivery) columns.push({ label: "Action", render: (p) => p.status === "Pending" && !p.assigned_to ? (
     <button type="button" disabled={!verified} data-testid={`accept-order-${p.id}`} onClick={() => update(p.id, "Accepted")} title={verified ? "" : "Complete verification first"}
       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40">
       <CheckCircle2 className="h-3.5 w-3.5" /> Accept Order
     </button>) : <span className="text-xs text-slate-400">{p.assigned_to === user.email ? "Assigned to you" : "—"}</span> });
-  if (!isAdmin && !isDelivery) columns.push({ label: "Partner", render: (p) => <span className="text-xs">{p.assigned_name || "—"}</span> });
+
   const metrics = [
     { label: "Total Volume Amount", value: sum(all, (p) => p.status !== "Cancelled"), format: "inr", hint: `${all.length} orders`, key: "total" },
     { label: "Total Paid / Settled", value: sum(all, (p) => p.status === "Completed"), format: "inr", hint: "Completed orders", key: "paid" },
@@ -152,6 +196,7 @@ export default function RealPickupsList({ mode = "all" }) {
         } />
       {tracking && <PickupTimeline pickupId={tracking} onClose={() => setTracking(null)} />}
       {completing && <CompleteDialog pickup={completing} isAdmin={isAdmin} onClose={() => setCompleting(null)} onSubmit={(x) => update(completing.id, "Completed", { ...x, confirmed: true })} />}
+      {viewPhotos && <PhotosDialog photos={viewPhotos} onClose={() => setViewPhotos(null)} />}
     </div>
   );
 }
