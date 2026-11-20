@@ -36,7 +36,7 @@ export default function LoginPage() {
       setWelcomeScreen(true);
       setTimeout(() => {
         navigate("/dashboard/overview");
-      }, 2200);
+      }, 5200);
     } catch (err) {
       setError(formatApiError(err));
     } finally {
