@@ -20,8 +20,10 @@ export default function LoginPage() {
   const [form, setForm] = useState({ role: "public", email: "", password: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [welcomeScreen, setWelcomeScreen] = useState(false);
 
-  if (user) return <Navigate to="/dashboard/overview" replace />;
+  // Only redirect immediately if user was already logged in and not showing the welcome splash
+  if (user && !welcomeScreen) return <Navigate to="/dashboard/overview" replace />;
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -31,7 +33,10 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(form.email.trim(), form.password, form.role);
-      navigate("/dashboard/overview");
+      setWelcomeScreen(true);
+      setTimeout(() => {
+        navigate("/dashboard/overview");
+      }, 2200);
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -39,15 +44,55 @@ export default function LoginPage() {
     }
   };
 
+  if (welcomeScreen) {
+    return (
+      <div
+        data-testid="welcome-splash"
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 px-6 text-center"
+      >
+        <div className="pointer-events-none absolute h-96 w-96 rounded-full bg-emerald-500/20 blur-3xl" />
+
+        <div className="relative flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
+          <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-3xl ">
+            <img
+              src="/logo11.png"
+              alt="ReLoop Logo"
+              className="h-full w-full object-contain"
+            />
+          </div>
+
+          <h1 className="mt-8 text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+            Welcome to Re<span className="text-emerald-400">Loop</span>
+          </h1>
+          <p className="mt-3 text-sm font-medium text-slate-400 sm:text-base">
+            Setting up your workspace...
+          </p>
+
+          <div className="mt-8 flex items-center gap-2 text-emerald-400">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="font-mono text-xs uppercase tracking-widest">
+              Loading Dashboard
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <aside className="relative hidden overflow-hidden bg-slate-950 p-12 lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-500/20 blur-3xl" />
-        <div className="flex items-center gap-3">
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl ">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl ">
             <img src="/logo11.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
           </div>
-          <span className="text-2xl font-extrabold tracking-tight text-white">Re<span className="text-emerald-500">Loop</span></span>
+          <div>
+            <span className="text-2xl font-extrabold tracking-tight text-white">
+              Re<span className="text-emerald-500">Loop</span>
+            </span>
+            <p className="text-xs font-medium text-emerald-400">Circular Waste Operations</p>
+          </div>
         </div>
         <div className="relative max-w-lg">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">Circular waste operations</p>
@@ -66,14 +111,15 @@ export default function LoginPage() {
 
       <main className="flex items-center justify-center bg-[#f4f6f9] px-5 py-12">
         <form onSubmit={submit} data-testid="login-form" className="rise w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-          <div className="flex items-center gap-3 lg:hidden mb-6">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl ">
+          <div className="mb-6 flex flex-col items-center text-center">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl">
               <img src="/logo11.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
             </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900">Re<span className="text-emerald-600">Loop</span></span>
+            <h2 className="mt-4 text-2xl font-extrabold tracking-tight text-slate-900">
+              Sign in to Re<span className="text-emerald-600">Loop</span>
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">Choose your role and use your work email.</p>
           </div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Sign in to ReLoop</h2>
-          <p className="mt-1 text-sm text-slate-500">Choose your role and use your work email.</p>
 
           {error && (
             <div data-testid="login-error" className="mt-5 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
