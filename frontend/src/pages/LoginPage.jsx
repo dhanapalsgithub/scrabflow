@@ -67,8 +67,8 @@ export default function LoginPage() {
       <main className="flex items-center justify-center bg-[#f4f6f9] px-5 py-12">
         <form onSubmit={submit} data-testid="login-form" className="rise w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="flex items-center gap-3 lg:hidden mb-6">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-md ring-1 ring-slate-200">
-              <img src="/logo1.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl ">
+              <img src="/logo11.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
             </div>
             <span className="text-lg font-bold tracking-tight text-slate-900">Re<span className="text-emerald-600">Loop</span></span>
           </div>
