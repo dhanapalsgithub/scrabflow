@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { AlertCircle, ArrowRight, Loader2, Leaf, Truck, Building2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
 import { ROLE_LABELS } from "@/lib/menu";
 import { inputCls } from "@/lib/format";
-import { Logo } from "@/components/reloop/Sidebar";
 import { Input } from "@/components/ui/input";
 import { UiSelect } from "@/components/reloop/Fields";
 
@@ -41,10 +40,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
+    <div className="grid min-h-screen lg:grid-cols-2">
       <aside className="relative hidden overflow-hidden bg-slate-950 p-12 lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-emerald-500/20 blur-3xl" />
-        <Logo />
+        <div className="flex items-center gap-3">
+          <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl ">
+            <img src="/logo11.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
+          </div>
+          <span className="text-2xl font-extrabold tracking-tight text-white">Re<span className="text-emerald-500">Loop</span></span>
+        </div>
         <div className="relative max-w-lg">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">Circular waste operations</p>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight tracking-tight text-white xl:text-5xl">Every kilo of scrap, tracked from doorstep to hub.</h1>
@@ -62,8 +66,13 @@ export default function LoginPage() {
 
       <main className="flex items-center justify-center bg-[#f4f6f9] px-5 py-12">
         <form onSubmit={submit} data-testid="login-form" className="rise w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-          <div className="lg:hidden"><Logo dark={false} /></div>
-          <h2 className="mt-6 text-2xl font-extrabold tracking-tight text-slate-900 lg:mt-0">Sign in to ReLoop</h2>
+          <div className="flex items-center gap-3 lg:hidden mb-6">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-md ring-1 ring-slate-200">
+              <img src="/logo1.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
+            </div>
+            <span className="text-lg font-bold tracking-tight text-slate-900">Re<span className="text-emerald-600">Loop</span></span>
+          </div>
+          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Sign in to ReLoop</h2>
           <p className="mt-1 text-sm text-slate-500">Choose your role and use your work email.</p>
 
           {error && (

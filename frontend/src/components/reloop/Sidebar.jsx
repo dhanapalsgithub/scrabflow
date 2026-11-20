@@ -1,18 +1,26 @@
 import { NavLink } from "react-router-dom";
-import { LogOut, Recycle } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { menuFor, ROLE_LABELS } from "@/lib/menu";
 
 export const Logo = ({ dark = true }) => (
-  <div className="flex items-center gap-2.5">
-    <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500 text-white"><Recycle className="h-5 w-5" /></span>
-    <span className={`text-xl font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>Re<span className="text-emerald-500">Loop</span></span>
+  <div className="flex items-center gap-3">
+    <div className="flex h-20 w-35 shrink-0 items-center justify-center overflow-hidden rounded-xl  ">
+      <img
+        src="/logo11.png"
+        alt="ReLoop Logo"
+        className="h-full w-full object-contain"
+      />
+    </div>
+    <span className={`text-xl font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>
+      Re<span className="text-emerald-500">Loop</span>
+    </span>
   </div>
 );
 
 export const SidebarContent = ({ user, onLogout, onNavigate }) => (
-  <div className="flex h-full flex-col bg-slate-950 px-4 py-6">
-    <div className="px-2"><Logo /></div>
-    <p className="mt-8 px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Operations</p>
+  <div className="flex h-full flex-col bg-slate-950 px-4 py-8">
+    <div className="px-1"><Logo /></div>
+    <p className="mt-12 px-12 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Operations</p>
     <nav className="mt-3 flex flex-1 flex-col gap-1 overflow-y-auto" data-testid="sidebar-nav">
       {menuFor(user).map(({ key, label, icon: Icon }) => (
         <NavLink

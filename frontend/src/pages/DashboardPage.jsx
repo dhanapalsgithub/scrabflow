@@ -5,7 +5,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { sectionsFor, labelFor } from "@/lib/menu";
-import { SidebarContent, Logo } from "@/components/reloop/Sidebar";
+import { SidebarContent } from "@/components/reloop/Sidebar";
 import OverviewView from "@/views/OverviewView";
 import SellScrapForm from "@/views/SellScrapForm";
 import UserPickupsList from "@/views/UserPickupsList";
@@ -69,7 +69,14 @@ export default function DashboardPage() {
       </Sheet>
       <div className="lg:pl-72">
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur-xl lg:hidden">
-          <Logo dark={false} />
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl ">
+              <img src="/logo11.png" alt="ReLoop Logo" className="h-full w-full object-contain" />
+            </div>
+            <span className="text-lg font-extrabold tracking-tight text-slate-900">
+              Re<span className="text-emerald-600">Loop</span>
+            </span>
+          </div>
           <button type="button" data-testid="mobile-menu-btn" onClick={() => setOpen(true)} className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white">
             <Menu className="h-5 w-5" />
           </button>
